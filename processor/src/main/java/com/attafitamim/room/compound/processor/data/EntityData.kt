@@ -14,6 +14,7 @@ sealed interface EntityData {
     data class Entity(
         override val packageName: String,
         override val className: String,
+        val propertyName: String,
         val isNullable: Boolean
     ) : EntityData
 }
