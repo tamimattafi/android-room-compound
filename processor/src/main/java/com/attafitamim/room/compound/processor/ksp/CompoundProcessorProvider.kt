@@ -9,7 +9,6 @@ class CompoundProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor =
         CompoundProcessor(
             environment.codeGenerator,
-            environment.logger,
-            environment.options
+            environment.logger
         )
 }
