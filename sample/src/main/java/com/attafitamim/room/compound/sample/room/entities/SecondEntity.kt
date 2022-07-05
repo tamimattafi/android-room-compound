@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 @Entity
-data class SecondaryEntity(
+data class SecondEntity(
     @PrimaryKey
     val name: String,
     val date: String

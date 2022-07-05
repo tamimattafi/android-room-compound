@@ -5,9 +5,9 @@ import androidx.room.Relation
 import com.attafitamim.room.compound.annotations.Compound
 
 @Compound
-data class SecondaryCompound(
+data class SecondCompound(
     @Embedded
-    val secondaryEntity: SecondaryEntity,
+    val secondaryEntity: SecondEntity,
 
     @Relation(
         parentColumn = "",
