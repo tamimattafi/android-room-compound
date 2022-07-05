@@ -5,14 +5,8 @@ import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.ksp.CompoundVisitor
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
-import com.squareup.kotlinpoet.AnnotationSpec
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.asClassName
 import java.io.OutputStream
 
 class CompoundGenerator(
@@ -41,6 +35,21 @@ class CompoundGenerator(
             .addParameter("compounds", compoundListName)
             .addAnnotation(transactionAnnotation)
 
+        val listInitializationBlock = CodeBlock.builder()
+        val listMappingBlock = CodeBlock.builder()
+
+        fun addForEachStatement(parameter: String) {
+            listMappingBlock.beginControlFlow("$parameter.forEach")
+        }
+
+        fun addSetInitializeStatement(entityData: EntityData.Entity, parameterName: String) {
+            val entityClassName = ClassName(entityData.packageName, entityData.className)
+            val parentSetName = HashSet::class.asClassName().parameterizedBy(entityClassName)
+            listInitializationBlock.addStatement("val $parameterName = %T()", parentSetName)
+        }
+
+        addForEachStatement("compounds")
+
         fun addEntitySet(entityData: EntityData, parentName: String? = null) {
             val parameterName = buildString {
                 if (parentName != null) append(parentName, "_")
@@ -55,9 +64,7 @@ class CompoundGenerator(
                 }
 
                 is EntityData.Entity -> {
-                    val entityClassName = ClassName(entityData.packageName, entityData.className)
-                    val parentSetName = HashSet::class.asClassName().parameterizedBy(entityClassName)
-                    listInsertFunction.addStatement("val $parameterName = %T()", parentSetName)
+                    addSetInitializeStatement(entityData, parameterName)
                 }
             }
         }
@@ -97,6 +104,10 @@ class CompoundGenerator(
             addParameter(entityData)
             addEntitySet(entityData)
         }
+
+        listInsertFunction
+            .addCode(listInitializationBlock.build())
+            .addCode(listMappingBlock.endControlFlow().build())
 
         val daoAnnotation = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.DAO_ANNOTATION)
 
