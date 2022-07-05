@@ -192,7 +192,6 @@ class CompoundVisitor(
         const val EMBEDDED_ANNOTATION = "Embedded"
         const val RELATION_ANNOTATION = "Relation"
         const val ENTITY_ANNOTATION = "Entity"
-        const val TRANSACTION_ANNOTATION = "Transaction"
         const val DAO_ANNOTATION = "Dao"
         const val INSERT_ANNOTATION = "Insert"
 

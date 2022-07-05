@@ -1,17 +1,17 @@
-package com.attafitamim.room.compound.sample
+package com.attafitamim.room.compound.sample.room.entities
 
 import androidx.room.Embedded
 import androidx.room.Relation
 import com.attafitamim.room.compound.annotations.Compound
 
 @Compound
-data class ThirdCompound(
+data class MainCompound(
     @Embedded
-    val name: ThirdEntity,
+    val mainEntity: MainEntity,
 
     @Relation(
         parentColumn = "",
         entityColumn = ""
     )
-    val name2: ForthEntity
+    val secondaryCompound: SecondaryCompound,
 )

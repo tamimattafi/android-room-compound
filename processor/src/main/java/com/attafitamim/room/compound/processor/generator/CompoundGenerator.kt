@@ -20,7 +20,6 @@ class CompoundGenerator(
 
         val compoundClassName = ClassName(compoundData.packageName, compoundData.className)
 
-        val transactionAnnotation = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.TRANSACTION_ANNOTATION)
         val insertAnnotationClassName = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.INSERT_ANNOTATION)
         val conflictStrategyReplaceName = ClassName(
             CompoundVisitor.ROOM_PACKAGE, listOf(
@@ -33,10 +32,11 @@ class CompoundGenerator(
         val compoundListName = Collection::class.asClassName().parameterizedBy(compoundClassName)
         val listInsertFunction = FunSpec.builder("insertOrUpdate")
             .addParameter("compounds", compoundListName)
-            .addAnnotation(transactionAnnotation)
 
         val listInitializationBlock = CodeBlock.builder()
         val listMappingBlock = CodeBlock.builder()
+        val insertBlock = CodeBlock.builder()
+        insertBlock.addStatement("insertOrUpdate(")
 
         fun addForEachStatement(parameter: String) {
             listMappingBlock.beginControlFlow("$parameter.forEach")
@@ -50,21 +50,39 @@ class CompoundGenerator(
 
         addForEachStatement("compounds")
 
-        fun addEntitySet(entityData: EntityData, parentName: String? = null) {
+        fun addEntitySet(entityData: EntityData, parents: List<String> = listOf()) {
             val parameterName = buildString {
-                if (parentName != null) append(parentName, "_")
+                if (parents.isNotEmpty()) {
+                    append(parents.joinToString("_"))
+                    append("_")
+                }
+
                 append(entityData.propertyName)
             }
 
             when (entityData) {
                 is EntityData.Compound -> {
                     entityData.entities.forEach { compoundEntityData ->
-                        addEntitySet(compoundEntityData, parameterName)
+                        addEntitySet(compoundEntityData, parents + entityData.propertyName)
                     }
                 }
 
                 is EntityData.Entity -> {
                     addSetInitializeStatement(entityData, parameterName)
+                    insertBlock.addStatement("$parameterName,")
+
+                    val propertyAccess = buildString {
+                        append("it", ".")
+
+                        if (parents.isNotEmpty()) {
+                            append(parents.joinToString("."))
+                            append(".")
+                        }
+
+                        append(entityData.propertyName)
+                    }
+
+                    listMappingBlock.addStatement("$parameterName.add($propertyAccess)")
                 }
             }
         }
@@ -72,23 +90,26 @@ class CompoundGenerator(
         val singleInsertFunction = FunSpec.builder("insertOrUpdate")
             .addParameter("compound", compoundClassName)
             .addStatement("insertOrUpdate(listOf(compound))", listInsertFunction)
-            .addAnnotation(transactionAnnotation)
             .build()
 
         val entityInsertFunction = FunSpec.builder("insertOrUpdate")
             .addModifiers(KModifier.ABSTRACT)
             .addAnnotation(insertAnnotation)
 
-        fun addParameter(entityData: EntityData, parentName: String? = null) {
+        fun addParameter(entityData: EntityData, parents: List<String> = listOf()) {
             val parameterName = buildString {
-                if (parentName != null) append(parentName, "_")
+                if (parents.isNotEmpty()) {
+                    append(parents.joinToString("_"))
+                    append("_")
+                }
+
                 append(entityData.propertyName)
             }
 
             when (entityData) {
                 is EntityData.Compound -> {
                     entityData.entities.forEach { compoundEntityData ->
-                        addParameter(compoundEntityData, parameterName)
+                        addParameter(compoundEntityData, parents + entityData.propertyName)
                     }
                 }
 
@@ -105,9 +126,12 @@ class CompoundGenerator(
             addEntitySet(entityData)
         }
 
+        insertBlock.addStatement(")")
+
         listInsertFunction
             .addCode(listInitializationBlock.build())
             .addCode(listMappingBlock.endControlFlow().build())
+            .addCode(insertBlock.build())
 
         val daoAnnotation = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.DAO_ANNOTATION)
 
