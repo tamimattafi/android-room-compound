@@ -2,6 +2,7 @@ package com.attafitamim.room.compound.processor.generator
 
 import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
+import com.attafitamim.room.compound.processor.generator.syntax.PropertyAccessSyntax
 import com.attafitamim.room.compound.processor.ksp.CompoundVisitor
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
@@ -50,20 +51,13 @@ class CompoundGenerator(
 
         addForEachStatement("compounds")
 
-        fun addEntitySet(entityData: EntityData, parents: List<String> = listOf()) {
-            val parameterName = buildString {
-                if (parents.isNotEmpty()) {
-                    append(parents.joinToString("_"))
-                    append("_")
-                }
-
-                append(entityData.propertyName)
-            }
+        fun addEntitySet(entityData: EntityData, parents: List<EntityData> = listOf()) {
+            val parameterName = createEntityParameterName(entityData, parents)
 
             when (entityData) {
                 is EntityData.Compound -> {
                     entityData.entities.forEach { compoundEntityData ->
-                        addEntitySet(compoundEntityData, parents + entityData.propertyName)
+                        addEntitySet(compoundEntityData, parents + entityData)
                     }
                 }
 
@@ -71,18 +65,17 @@ class CompoundGenerator(
                     addSetInitializeStatement(entityData, parameterName)
                     insertBlock.addStatement("$parameterName,")
 
-                    val propertyAccess = buildString {
-                        append("it", ".")
+                    val propertyAccessSyntax = createPropertyAccessSyntax(
+                        "it",
+                        parents,
+                        entityData.propertyName
+                    )
 
-                        if (parents.isNotEmpty()) {
-                            append(parents.joinToString("."))
-                            append(".")
-                        }
-
-                        append(entityData.propertyName)
+                    if (propertyAccessSyntax.handleNullability) {
+                        listMappingBlock.addStatement("${propertyAccessSyntax.properyAccess}?.let($parameterName::add)")
+                    } else {
+                        listMappingBlock.addStatement("$parameterName.add(${propertyAccessSyntax.properyAccess})")
                     }
-
-                    listMappingBlock.addStatement("$parameterName.add($propertyAccess)")
                 }
             }
         }
@@ -153,6 +146,39 @@ class CompoundGenerator(
         )
 
         fileSpec.writeToFile(outputFile)
+    }
+
+    private fun createEntityParameterName(
+        entityData: EntityData,
+        parents: List<EntityData>
+    ) = buildString {
+        parents.forEach { entityData ->
+            append(entityData.propertyName, "_")
+        }
+
+        append(entityData.propertyName)
+    }
+
+    private fun createPropertyAccessSyntax(
+        parent: String,
+        parents: List<EntityData>,
+        propertyName: String
+    ): PropertyAccessSyntax {
+        var handleNullability = false
+        val propertyAccess = buildString {
+            append(parent, ".")
+
+            parents.forEach { entityData ->
+                append(entityData.propertyName)
+                handleNullability = handleNullability || entityData.isNullable
+                if (handleNullability) append("?")
+                append(".")
+            }
+
+            append(propertyName)
+        }
+
+        return PropertyAccessSyntax(propertyAccess, handleNullability)
     }
 
     private fun FileSpec.writeToFile(outputStream: OutputStream) = outputStream.use { stream ->
