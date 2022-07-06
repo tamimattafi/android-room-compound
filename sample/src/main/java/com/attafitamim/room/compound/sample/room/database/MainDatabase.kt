@@ -3,11 +3,11 @@ package com.attafitamim.room.compound.sample.room.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.attafitamim.room.compound.sample.room.entities.ForthEntity
-import com.attafitamim.room.compound.sample.room.entities.MainCompoundDao
+import com.attafitamim.room.compound.sample.room.entities.IMainCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.MainEntity
-import com.attafitamim.room.compound.sample.room.entities.SecondCompoundDao
+import com.attafitamim.room.compound.sample.room.entities.ISecondCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.SecondEntity
-import com.attafitamim.room.compound.sample.room.entities.ThirdCompoundDao
+import com.attafitamim.room.compound.sample.room.entities.IThirdCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
 
 @Database(
@@ -21,7 +21,7 @@ import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
     exportSchema = false
 )
 abstract class MainDatabase : RoomDatabase() {
-    abstract val mainCompoundDao: MainCompoundDao
-    abstract val secondCompoundDao: SecondCompoundDao
-    abstract val thirdCompoundDao: ThirdCompoundDao
+    abstract val mainCompoundDao: IMainCompoundDao
+    abstract val secondCompoundDao: ISecondCompoundDao
+    abstract val thirdCompoundDao: IThirdCompoundDao
 }

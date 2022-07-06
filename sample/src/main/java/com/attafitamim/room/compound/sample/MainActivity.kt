@@ -11,6 +11,8 @@ import com.attafitamim.room.compound.sample.room.entities.SecondCompound
 import com.attafitamim.room.compound.sample.room.entities.SecondEntity
 import com.attafitamim.room.compound.sample.room.entities.ThirdCompound
 import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private val database by lazy {
@@ -18,7 +20,7 @@ class MainActivity : AppCompatActivity() {
             this,
             MainDatabase::class.java,
             "main_database"
-        ).allowMainThreadQueries().build()
+        ).build()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,6 +34,8 @@ class MainActivity : AppCompatActivity() {
         val secondCompound = SecondCompound(secondEntity, thirdCompound)
 
         val mainEntity = MainEntity("mainEntity", "1/2/3")
-        database.mainCompoundDao.insertOrUpdate(MainCompound(mainEntity, secondCompound))
+        GlobalScope.launch {
+            database.mainCompoundDao.insertOrUpdate(MainCompound(mainEntity, secondCompound))
+        }
     }
 }

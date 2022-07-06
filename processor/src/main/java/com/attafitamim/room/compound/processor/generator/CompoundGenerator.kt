@@ -2,13 +2,34 @@ package com.attafitamim.room.compound.processor.generator
 
 import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
-import com.attafitamim.room.compound.processor.generator.syntax.PropertyAccessSyntax
-import com.attafitamim.room.compound.processor.ksp.CompoundVisitor
+import com.attafitamim.room.compound.processor.generator.syntax.COMPOUND_LIST_PARAMETER_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_POSTFIX
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_PREFIX
+import com.attafitamim.room.compound.processor.generator.syntax.INSERT_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.IT_KEYWORD
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_CLOSE_PARENTHESIS
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_OPEN_PARENTHESIS
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_SEPARATOR
+import com.attafitamim.room.compound.processor.generator.syntax.ROOM_PACKAGE
+import com.attafitamim.room.compound.processor.generator.utils.createEntityParameterName
+import com.attafitamim.room.compound.processor.generator.utils.createForEachSyntax
+import com.attafitamim.room.compound.processor.generator.utils.createInitializationSyntax
+import com.attafitamim.room.compound.processor.generator.utils.createInsertAnnotationSpec
+import com.attafitamim.room.compound.processor.generator.utils.createListAdditionSyntax
+import com.attafitamim.room.compound.processor.generator.utils.createPropertyAccessSyntax
+import com.attafitamim.room.compound.processor.generator.utils.createSingleInsertFunction
+import com.attafitamim.room.compound.processor.generator.utils.writeToFile
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
-import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import java.io.OutputStream
+import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.asClassName
 
 class CompoundGenerator(
     private val codeGenerator: CodeGenerator
@@ -16,123 +37,124 @@ class CompoundGenerator(
 
     fun generateDao(compoundData: CompoundData) {
         val fileName = buildString {
-            append(compoundData.className, "Dao")
+            append(
+                DAO_PREFIX,
+                compoundData.className,
+                DAO_POSTFIX
+            )
         }
 
         val compoundClassName = ClassName(compoundData.packageName, compoundData.className)
+        val insertAnnotation = createInsertAnnotationSpec()
 
-        val insertAnnotationClassName = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.INSERT_ANNOTATION)
-        val conflictStrategyReplaceName = ClassName(
-            CompoundVisitor.ROOM_PACKAGE, listOf(
-                CompoundVisitor.CONFLICT_STRATEGY, CompoundVisitor.CONFLICT_STRATEGY_REPLACE
-            ))
-        val insertAnnotation = AnnotationSpec.builder(insertAnnotationClassName)
-            .addMember("onConflict = %T", conflictStrategyReplaceName)
-            .build()
+        val compoundListName = Collection::class.asClassName()
+            .parameterizedBy(compoundClassName)
 
-        val compoundListName = Collection::class.asClassName().parameterizedBy(compoundClassName)
-        val listInsertFunction = FunSpec.builder("insertOrUpdate")
-            .addParameter("compounds", compoundListName)
+        val listInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+            .addParameter(COMPOUND_LIST_PARAMETER_NAME, compoundListName)
+            .addModifiers(KModifier.SUSPEND)
 
         val listInitializationBlock = CodeBlock.builder()
         val listMappingBlock = CodeBlock.builder()
         val insertBlock = CodeBlock.builder()
-        insertBlock.addStatement("insertOrUpdate(")
+        val insertMethodCall = buildString {
+            append(
+                INSERT_METHOD_NAME,
+                PARAMETER_OPEN_PARENTHESIS
+            )
+        }
+
+        insertBlock.addStatement(insertMethodCall)
 
         fun addForEachStatement(parameter: String) {
-            listMappingBlock.beginControlFlow("$parameter.forEach")
+            val forEachSyntax = createForEachSyntax(parameter)
+            listMappingBlock.beginControlFlow(forEachSyntax)
         }
 
         fun addSetInitializeStatement(entityData: EntityData.Entity, parameterName: String) {
             val entityClassName = ClassName(entityData.packageName, entityData.className)
             val parentSetName = HashSet::class.asClassName().parameterizedBy(entityClassName)
-            listInitializationBlock.addStatement("val $parameterName = %T()", parentSetName)
+
+            val initializationSyntax = createInitializationSyntax(parameterName)
+            listInitializationBlock.addStatement(initializationSyntax, parentSetName)
         }
 
-        addForEachStatement("compounds")
+        addForEachStatement(COMPOUND_LIST_PARAMETER_NAME)
 
-        fun addEntitySet(entityData: EntityData, parents: List<EntityData> = listOf()) {
-            val parameterName = createEntityParameterName(entityData, parents)
+        val entityInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+            .addModifiers(KModifier.ABSTRACT)
+            .addAnnotation(insertAnnotation)
 
+        fun handleEntity(entityData: EntityData, parents: List<EntityData> = listOf()) {
             when (entityData) {
-                is EntityData.Compound -> {
-                    entityData.entities.forEach { compoundEntityData ->
-                        addEntitySet(compoundEntityData, parents + entityData)
-                    }
+                is EntityData.Compound -> entityData.entities.forEach { compoundEntityData ->
+                    handleEntity(compoundEntityData, parents + entityData)
                 }
 
                 is EntityData.Entity -> {
-                    addSetInitializeStatement(entityData, parameterName)
-                    insertBlock.addStatement("$parameterName,")
+                    val parameterName = createEntityParameterName(entityData, parents)
 
+                    addSetInitializeStatement(entityData, parameterName)
+                    val parameterWithSeparator = buildString {
+                        append(
+                            parameterName,
+                            PARAMETER_SEPARATOR
+                        )
+                    }
+
+                    insertBlock.addStatement(parameterWithSeparator)
                     val propertyAccessSyntax = createPropertyAccessSyntax(
-                        "it",
+                        IT_KEYWORD,
                         parents,
                         entityData.propertyName
                     )
 
-                    if (propertyAccessSyntax.handleNullability) {
-                        listMappingBlock.addStatement("${propertyAccessSyntax.properyAccess}?.let($parameterName::add)")
-                    } else {
-                        listMappingBlock.addStatement("$parameterName.add(${propertyAccessSyntax.properyAccess})")
-                    }
-                }
-            }
-        }
+                    val listAdditionSyntax = createListAdditionSyntax(
+                        parameterName,
+                        propertyAccessSyntax,
+                        entityData.isCollection
+                    )
 
-        val singleInsertFunction = FunSpec.builder("insertOrUpdate")
-            .addParameter("compound", compoundClassName)
-            .addStatement("insertOrUpdate(listOf(compound))", listInsertFunction)
-            .build()
+                    listMappingBlock.addStatement(listAdditionSyntax)
 
-        val entityInsertFunction = FunSpec.builder("insertOrUpdate")
-            .addModifiers(KModifier.ABSTRACT)
-            .addAnnotation(insertAnnotation)
-
-        fun addParameter(entityData: EntityData, parents: List<String> = listOf()) {
-            val parameterName = buildString {
-                if (parents.isNotEmpty()) {
-                    append(parents.joinToString("_"))
-                    append("_")
-                }
-
-                append(entityData.propertyName)
-            }
-
-            when (entityData) {
-                is EntityData.Compound -> {
-                    entityData.entities.forEach { compoundEntityData ->
-                        addParameter(compoundEntityData, parents + entityData.propertyName)
-                    }
-                }
-
-                is EntityData.Entity -> {
                     val entityClassName = ClassName(entityData.packageName, entityData.className)
-                    val parentListName = Collection::class.asClassName().parameterizedBy(entityClassName)
-                    entityInsertFunction.addParameter(parameterName, parentListName)
+
+                    val parentListName = Collection::class.asClassName()
+                        .parameterizedBy(entityClassName)
+
+                    entityInsertFunctionBuilder.addParameter(parameterName, parentListName)
                 }
             }
         }
 
         compoundData.entities.forEach { entityData ->
-            addParameter(entityData)
-            addEntitySet(entityData)
+            handleEntity(entityData)
         }
 
-        insertBlock.addStatement(")")
+        insertBlock.addStatement(PARAMETER_CLOSE_PARENTHESIS)
 
-        listInsertFunction
+        listInsertFunctionBuilder
             .addCode(listInitializationBlock.build())
             .addCode(listMappingBlock.endControlFlow().build())
             .addCode(insertBlock.build())
 
-        val daoAnnotation = ClassName(CompoundVisitor.ROOM_PACKAGE, CompoundVisitor.DAO_ANNOTATION)
+        val listInsertFunction = listInsertFunctionBuilder.build()
+
+        val singleInsertFunction = createSingleInsertFunction(
+            compoundClassName,
+            listInsertFunction
+        )
+
+        val daoAnnotation = ClassName(
+            ROOM_PACKAGE,
+            DAO_ANNOTATION
+        )
 
         val interfaceSpec = TypeSpec.interfaceBuilder(fileName)
             .addAnnotation(daoAnnotation)
             .addFunction(singleInsertFunction)
-            .addFunction(listInsertFunction.build())
-            .addFunction(entityInsertFunction.build())
+            .addFunction(listInsertFunction)
+            .addFunction(entityInsertFunctionBuilder.build())
             .build()
 
         val fileSpec = FileSpec.builder(compoundData.packageName, fileName)
@@ -146,42 +168,5 @@ class CompoundGenerator(
         )
 
         fileSpec.writeToFile(outputFile)
-    }
-
-    private fun createEntityParameterName(
-        entityData: EntityData,
-        parents: List<EntityData>
-    ) = buildString {
-        parents.forEach { entityData ->
-            append(entityData.propertyName, "_")
-        }
-
-        append(entityData.propertyName)
-    }
-
-    private fun createPropertyAccessSyntax(
-        parent: String,
-        parents: List<EntityData>,
-        propertyName: String
-    ): PropertyAccessSyntax {
-        var handleNullability = false
-        val propertyAccess = buildString {
-            append(parent, ".")
-
-            parents.forEach { entityData ->
-                append(entityData.propertyName)
-                handleNullability = handleNullability || entityData.isNullable
-                if (handleNullability) append("?")
-                append(".")
-            }
-
-            append(propertyName)
-        }
-
-        return PropertyAccessSyntax(propertyAccess, handleNullability)
-    }
-
-    private fun FileSpec.writeToFile(outputStream: OutputStream) = outputStream.use { stream ->
-        stream.writer().use(::writeTo)
     }
 }
