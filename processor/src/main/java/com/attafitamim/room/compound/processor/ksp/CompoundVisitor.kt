@@ -25,24 +25,27 @@ class CompoundVisitor(
     }
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
-        val compoundData = getCompoundData(classDeclaration)
-        compoundGenerator.generateDao(compoundData)
+        try {
+            val compoundData = getCompoundData(classDeclaration)
+            compoundGenerator.generateDao(compoundData)
+        } catch (e: Exception) {
+        }
     }
 
     private fun getCompoundData(classDeclaration: KSClassDeclaration): CompoundData {
-        if (classDeclaration.classKind != ClassKind.CLASS) throw logger.throwException(
+        if (classDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
             classDeclaration
         )
 
         val properties = classDeclaration.getAllProperties().iterator()
-        if (!properties.hasNext()) throw logger.throwException(
+        if (!properties.hasNext()) logger.throwException(
             "A compound must at least have one embedded and one relation",
             classDeclaration
         )
 
         val childEntities = properties.toChildEntities()
-        if (childEntities.isEmpty()) throw logger.throwException(
+        if (childEntities.isEmpty()) logger.throwException(
             "A compound must have at least one child with Relation annotation",
             classDeclaration
         )
@@ -60,26 +63,27 @@ class CompoundVisitor(
     private fun getCompound(
         classDeclaration: KSClassDeclaration,
         propertyDeclaration: KSPropertyDeclaration? = null
-    ): EntityData.Compound? {
-        if (classDeclaration.classKind != ClassKind.CLASS) throw logger.throwException(
+    ): EntityData.Compound {
+        if (classDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
             classDeclaration
         )
 
         val properties = classDeclaration.getAllProperties().iterator()
-        if (!properties.hasNext()) throw logger.throwException(
+        if (!properties.hasNext()) logger.throwException(
             "A compound must at least have one embedded and one relation",
             classDeclaration
         )
 
         val childEntities = properties.toChildEntities()
-        if (childEntities.isEmpty()) throw logger.throwException(
+        if (childEntities.isEmpty()) logger.throwException(
             "A compound must have at least one child with Relation annotation",
             classDeclaration
         )
 
         val propertyName = propertyDeclaration?.simpleName?.getShortName().orEmpty()
         val isNullable = propertyDeclaration?.type?.resolve()?.isMarkedNullable ?: false
+
         return EntityData.Compound(
             propertyName,
             isNullable,
@@ -121,7 +125,6 @@ class CompoundVisitor(
                 val childEntity = if (!isEntity) getCompound(propertyType, property)
                 else getEntity(property)
 
-                if (childEntity == null) return emptyList()
                 childEntities.add(childEntity)
             }
         }
