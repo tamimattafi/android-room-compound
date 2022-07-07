@@ -2,7 +2,6 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'com.google.devtools.ksp'
-    id 'org.jetbrains.kotlin.kapt'
 }
 
 android {
@@ -39,12 +38,8 @@ android {
     }
 }
 
-kapt {
-    correctErrorTypes true
-}
-
 ksp {
-    arg("suspendDao", "false")
+    arg("suspendDao", "true")
     arg("useDaoPrefix", "true")
     arg("useDaoPostfix", "true")
 }
@@ -61,7 +56,7 @@ dependencies {
     // Room SQL database
     implementation("androidx.room:room-runtime:2.4.2")
     implementation("androidx.room:room-ktx:2.4.2")
-    kapt("androidx.room:room-compiler:2.4.2")
+    ksp("androidx.room:room-compiler:2.4.2")
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'

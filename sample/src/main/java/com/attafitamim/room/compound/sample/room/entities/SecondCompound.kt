@@ -13,13 +13,19 @@ data class SecondCompound(
         parentColumn = "",
         entityColumn = ""
     )
-    val thirdCompound: List<ThirdCompound>,
+    val thirdCompounds: List<ThirdCompound>,
 
     @Relation(
         parentColumn = "",
         entityColumn = ""
     )
-    val thirdEntity: ThirdEntity,
+    val thirdCompound: ThirdCompound?,
+
+    @Relation(
+        parentColumn = "",
+        entityColumn = ""
+    )
+    val thirdEntity: ThirdEntity?,
 
     @Relation(
         parentColumn = "",

@@ -86,7 +86,7 @@ class CompoundGenerator(
         compoundData: CompoundData
     ): FunSpec {
         val insertAnnotation = createInsertAnnotationSpec()
-        val functionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+        val functionBuilder = FunSpec.builder(INSERT_ENTITIES_METHOD_NAME)
             .addModifiers(KModifier.ABSTRACT)
             .addAnnotation(insertAnnotation)
 
@@ -151,7 +151,7 @@ class CompoundGenerator(
 
                         addForEachStatement(
                             propertyAccessSyntax.properAccess,
-                            entityData.isNullable
+                            propertyAccessSyntax.handleNullability
                         )
 
                         entityData.entities.forEach { compoundEntityData ->
@@ -203,7 +203,7 @@ class CompoundGenerator(
         val codeBlockBuilder = CodeBlock.builder()
 
         val insertMethodCall = buildString {
-            append(INSERT_METHOD_NAME, PARAMETER_OPEN_PARENTHESIS)
+            append(INSERT_ENTITIES_METHOD_NAME, PARAMETER_OPEN_PARENTHESIS)
         }
 
         codeBlockBuilder.addStatement(insertMethodCall)

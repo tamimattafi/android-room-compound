@@ -26,16 +26,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-/*        val forthEntity = ForthEntity("forthEntity", "1/2/3/4")
-        val thirdEntity = ThirdEntity("thirdEntity", "1/2/3")
-        val thirdCompound = ThirdCompound(thirdEntity, listOf(forthEntity))
-
         val secondEntity = SecondEntity("secondEntity", "1/2/3")
-        val secondCompound = SecondCompound(secondEntity, thirdCompound)
+        val forthEntity = ForthEntity("forthEntity", "1/2/3/4")
+        val thirdEntity = ThirdEntity("thirdEntity", "1/2/3")
+        val thirdCompound = ThirdCompound(thirdEntity, listOf(secondEntity), listOf(forthEntity))
+
+        val secondCompound = SecondCompound(
+            secondEntity,
+            listOf(thirdCompound),
+            thirdCompound,
+            thirdEntity,
+            forthEntity
+        )
 
         val mainEntity = MainEntity("mainEntity", "1/2/3")
+        val mainCompound = MainCompound(mainEntity, listOf(secondCompound), secondCompound)
+
         GlobalScope.launch {
-            database.mainCompoundDao.insertOrUpdate(MainCompound(mainEntity, listOf(secondCompound)))
-        }*/
+            database.mainCompoundDao.insertOrUpdate(mainCompound)
+        }
     }
 }
