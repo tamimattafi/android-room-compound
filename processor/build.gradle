@@ -5,7 +5,7 @@ plugins {
 }
 
 ext {
-    PUBLISH_ARTIFACT_ID = 'processor'
+    PUBLISH_ARTIFACT_ID = 'compound-processor'
 }
 
 apply from: "${rootProject.projectDir}/scripts/publish-module.gradle"

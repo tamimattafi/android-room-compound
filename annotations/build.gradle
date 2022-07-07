@@ -5,7 +5,7 @@ plugins {
 }
 
 ext {
-    PUBLISH_ARTIFACT_ID = 'annotations'
+    PUBLISH_ARTIFACT_ID = 'compound-annotations'
 }
 
 apply from: "${rootProject.projectDir}/scripts/publish-module.gradle"
