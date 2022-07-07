@@ -13,5 +13,5 @@ data class MainCompound(
         parentColumn = "",
         entityColumn = ""
     )
-    val secondaryCompound: List<SecondCompound>,
+    val secondaryCompound: List<SecondCompound>?,
 )
