@@ -9,8 +9,15 @@ ext {
 
 task projectSourcesJar(type: Jar) {
     archiveClassifier.set('sources')
-    from sourceSets.main.java.srcDirs
-    from sourceSets.main.kotlin.srcDirs
+    if (project.plugins.findPlugin("com.android.library")) {
+        // For Android libraries
+        from android.sourceSets.main.java.srcDirs
+        from android.sourceSets.main.kotlin.srcDirs
+    } else {
+        // For pure Kotlin libraries, in case you have them
+        from sourceSets.main.java.srcDirs
+        from sourceSets.main.kotlin.srcDirs
+    }
 }
 
 task javadocJar(type: Jar, dependsOn: dokkaJavadoc) {
@@ -45,20 +52,25 @@ afterEvaluate {
                 artifactId PUBLISH_ARTIFACT_ID
                 version PUBLISH_VERSION
 
-                from components.java
+                // Two artifacts, the `aar` (or `jar`) and the sources
+                if (project.plugins.findPlugin("com.android.library")) {
+                    from components.release
+                } else {
+                    from components.java
+                }
 
                 artifact projectSourcesJar
                 artifact javadocJar
 
                 pom {
                     name = PUBLISH_ARTIFACT_ID
-                    description = 'Compound support for Room Android'
+                    description = 'Helper libraries for Room Android (SQLite)'
                     url = 'https://github.com/tamimattafi/android-room-compound'
 
                     licenses {
                         license {
                             name = 'Library Licence'
-                            url = 'https://github.com/tamimattafi/android-room-compound/blob/main/LICENSE'
+                            url = 'https://github.com/tamimattafi/android-room-compound/blob/main/README.md'
                         }
                     }
 
@@ -72,7 +84,7 @@ afterEvaluate {
 
                     scm {
                         connection = 'scm:git:github.com/tamimattafi/android-room-compound.git'
-                        developerConnection = 'scm:git:ssh://github.com/tamimattafi/android-room-compound.git'
+                        developerConnection = 'scm:github.com/tamimattafi/android-room-compound.git'
                         url = 'https://github.com/tamimattafi/android-room-compound/tree/main'
                     }
                 }
