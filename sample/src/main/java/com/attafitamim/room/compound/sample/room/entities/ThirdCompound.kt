@@ -13,5 +13,5 @@ data class ThirdCompound(
         parentColumn = "",
         entityColumn = ""
     )
-    val forthEntity: ForthEntity
+    val forthEntity: List<ForthEntity>
 )

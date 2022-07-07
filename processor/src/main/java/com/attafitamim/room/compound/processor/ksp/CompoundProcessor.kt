@@ -10,11 +10,12 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 
 class CompoundProcessor(
     private val codeGenerator: CodeGenerator,
-    private val logger: KSPLogger
+    private val logger: KSPLogger,
+    private val options: Map<String, String>
 ) : SymbolProcessor {
 
     private val compoundVisitor by lazy {
-        CompoundVisitor(codeGenerator, logger)
+        CompoundVisitor(codeGenerator, logger, options)
     }
 
     override fun process(resolver: Resolver): List<KSAnnotated> {

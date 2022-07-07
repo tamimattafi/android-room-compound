@@ -28,14 +28,14 @@ class MainActivity : AppCompatActivity() {
 
         val forthEntity = ForthEntity("forthEntity", "1/2/3/4")
         val thirdEntity = ThirdEntity("thirdEntity", "1/2/3")
-        val thirdCompound = ThirdCompound(thirdEntity, forthEntity)
+        val thirdCompound = ThirdCompound(thirdEntity, listOf(forthEntity))
 
         val secondEntity = SecondEntity("secondEntity", "1/2/3")
         val secondCompound = SecondCompound(secondEntity, thirdCompound)
 
         val mainEntity = MainEntity("mainEntity", "1/2/3")
         GlobalScope.launch {
-            database.mainCompoundDao.insertOrUpdate(MainCompound(mainEntity, secondCompound))
+            database.mainCompoundDao.insertOrUpdate(MainCompound(mainEntity, listOf(secondCompound)))
         }
     }
 }

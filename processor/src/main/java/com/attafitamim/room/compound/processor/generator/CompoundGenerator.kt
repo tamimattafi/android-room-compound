@@ -32,27 +32,35 @@ import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 
 class CompoundGenerator(
-    private val codeGenerator: CodeGenerator
+    private val codeGenerator: CodeGenerator,
+    private val options: Map<String, String>
 ) {
+
+    private val isSuspendDao: Boolean get() =
+        options["suspendDao"] == "true"
+
+    private val useDaoPrefix: Boolean get() =
+        options["useDaoPrefix"] == "true"
+
+    private val useDaoPostfix: Boolean get() =
+        options["useDaoPostfix"] == "true"
 
     fun generateDao(compoundData: CompoundData) {
         val fileName = buildString {
-            append(
-                DAO_PREFIX,
-                compoundData.className,
-                DAO_POSTFIX
-            )
+            if (useDaoPrefix) append(DAO_PREFIX)
+            append(compoundData.className)
+            if (useDaoPostfix) append(DAO_POSTFIX)
         }
 
         val compoundClassName = ClassName(compoundData.packageName, compoundData.className)
-        val insertAnnotation = createInsertAnnotationSpec()
 
         val compoundListName = Collection::class.asClassName()
             .parameterizedBy(compoundClassName)
 
         val listInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
             .addParameter(COMPOUND_LIST_PARAMETER_NAME, compoundListName)
-            .addModifiers(KModifier.SUSPEND)
+
+        if (isSuspendDao) listInsertFunctionBuilder.addModifiers(KModifier.SUSPEND)
 
         val listInitializationBlock = CodeBlock.builder()
         val listMappingBlock = CodeBlock.builder()
@@ -81,19 +89,49 @@ class CompoundGenerator(
 
         addForEachStatement(COMPOUND_LIST_PARAMETER_NAME)
 
+        val insertAnnotation = createInsertAnnotationSpec()
         val entityInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
             .addModifiers(KModifier.ABSTRACT)
             .addAnnotation(insertAnnotation)
 
-        fun handleEntity(entityData: EntityData, parents: List<EntityData> = listOf()) {
+        if (isSuspendDao) entityInsertFunctionBuilder.addModifiers(KModifier.SUSPEND)
+
+        fun handleEntity(
+            entityData: EntityData,
+            parents: List<EntityData> = listOf(),
+            accessParents: List<EntityData> = listOf()
+        ) {
             when (entityData) {
-                is EntityData.Compound -> entityData.entities.forEach { compoundEntityData ->
-                    handleEntity(compoundEntityData, parents + entityData)
+                is EntityData.Compound -> {
+                    if (entityData.isCollection) {
+                        val propertyAccessSyntax = createPropertyAccessSyntax(
+                            IT_KEYWORD,
+                            parents,
+                            entityData.propertyName
+                        )
+
+                        addForEachStatement(propertyAccessSyntax.properAccess)
+
+                        entityData.entities.forEach { compoundEntityData ->
+                            handleEntity(
+                                compoundEntityData,
+                                parents + entityData,
+                                listOf()
+                            )
+                        }
+
+                        listMappingBlock.endControlFlow()
+                    } else entityData.entities.forEach { compoundEntityData ->
+                        handleEntity(
+                            compoundEntityData,
+                            parents + entityData,
+                            accessParents + entityData
+                        )
+                    }
                 }
 
                 is EntityData.Entity -> {
                     val parameterName = createEntityParameterName(entityData, parents)
-
                     addSetInitializeStatement(entityData, parameterName)
                     val parameterWithSeparator = buildString {
                         append(
@@ -105,7 +143,7 @@ class CompoundGenerator(
                     insertBlock.addStatement(parameterWithSeparator)
                     val propertyAccessSyntax = createPropertyAccessSyntax(
                         IT_KEYWORD,
-                        parents,
+                        accessParents,
                         entityData.propertyName
                     )
 
@@ -142,7 +180,8 @@ class CompoundGenerator(
 
         val singleInsertFunction = createSingleInsertFunction(
             compoundClassName,
-            listInsertFunction
+            listInsertFunction,
+            isSuspendDao
         )
 
         val daoAnnotation = ClassName(

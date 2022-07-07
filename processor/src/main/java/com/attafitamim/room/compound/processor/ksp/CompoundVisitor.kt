@@ -17,19 +17,17 @@ import com.google.devtools.ksp.symbol.KSVisitorVoid
 
 class CompoundVisitor(
     private val codeGenerator: CodeGenerator,
-    private val logger: KSPLogger
+    private val logger: KSPLogger,
+    private val options: Map<String, String>
 ) : KSVisitorVoid() {
 
     private val compoundGenerator by lazy {
-        CompoundGenerator(codeGenerator)
+        CompoundGenerator(codeGenerator, options)
     }
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
-        try {
-            val compoundData = getCompoundData(classDeclaration)
-            compoundGenerator.generateDao(compoundData)
-        } catch (e: Exception) {
-        }
+        val compoundData = getCompoundData(classDeclaration)
+        compoundGenerator.generateDao(compoundData)
     }
 
     private fun getCompoundData(classDeclaration: KSClassDeclaration): CompoundData {
@@ -61,24 +59,25 @@ class CompoundVisitor(
     }
 
     private fun getCompound(
-        classDeclaration: KSClassDeclaration,
-        propertyDeclaration: KSPropertyDeclaration? = null
+        typeClassDeclaration: KSClassDeclaration,
+        propertyDeclaration: KSPropertyDeclaration? = null,
+        isCollection: Boolean = false
     ): EntityData.Compound {
-        if (classDeclaration.classKind != ClassKind.CLASS) logger.throwException(
+        if (typeClassDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
-            classDeclaration
+            typeClassDeclaration
         )
 
-        val properties = classDeclaration.getAllProperties().iterator()
+        val properties = typeClassDeclaration.getAllProperties().iterator()
         if (!properties.hasNext()) logger.throwException(
             "A compound must at least have one embedded and one relation",
-            classDeclaration
+            typeClassDeclaration
         )
 
         val childEntities = properties.toChildEntities()
         if (childEntities.isEmpty()) logger.throwException(
             "A compound must have at least one child with Relation annotation",
-            classDeclaration
+            typeClassDeclaration
         )
 
         val propertyName = propertyDeclaration?.simpleName?.getShortName().orEmpty()
@@ -87,21 +86,23 @@ class CompoundVisitor(
         return EntityData.Compound(
             propertyName,
             isNullable,
-            isCollection = false,
+            isCollection,
             childEntities
         )
     }
 
-    private fun getEntity(propertyDeclaration: KSPropertyDeclaration): EntityData.Entity {
-        val propertyType = propertyDeclaration.type.resolve()
-
-        val packageName = propertyType.declaration.packageName.asString()
-        val className = propertyType.declaration.simpleName.asString()
+    private fun getEntity(
+        typeClassDeclaration: KSClassDeclaration,
+        propertyDeclaration: KSPropertyDeclaration,
+        isCollection: Boolean = false
+    ): EntityData.Entity {
+        val packageName = typeClassDeclaration.packageName.asString()
+        val className = typeClassDeclaration.simpleName.asString()
 
         return EntityData.Entity(
             propertyDeclaration.simpleName.getShortName(),
-            propertyType.isMarkedNullable,
-            isCollection = false,
+            propertyDeclaration.type.resolve().isMarkedNullable,
+            isCollection,
             packageName,
             className,
         )
@@ -118,12 +119,38 @@ class CompoundVisitor(
             }
 
             if (isValidEntity) {
-                val isEntity = propertyType.annotations.any { annotation ->
-                    annotation.shortName.getShortName() == ENTITY_ANNOTATION
-                }
+                val collectionName = Collection::class.simpleName
+                val isCollection = propertyType.simpleName.getShortName() == collectionName ||
+                    propertyType.superTypes.any { superType ->
+                        superType.resolve().declaration.simpleName.getShortName() == collectionName
+                    }
 
-                val childEntity = if (!isEntity) getCompound(propertyType, property)
-                else getEntity(property)
+                val childEntity = when {
+                    isCollection -> {
+                        val elementType = property.type.resolve()
+                            .arguments
+                            .first()
+                            .type.let(::requireNotNull)
+                            .resolve()
+                            .declaration as KSClassDeclaration
+
+                        val isElementEntity = elementType.annotations.any { annotation ->
+                            annotation.shortName.getShortName() == ENTITY_ANNOTATION
+                        }
+
+                        if (!isElementEntity) getCompound(elementType, property, isCollection)
+                        else getEntity(elementType, property, isCollection)
+                    }
+
+                    else -> {
+                        val isEntity = propertyType.annotations.any { annotation ->
+                            annotation.shortName.getShortName() == ENTITY_ANNOTATION
+                        }
+
+                        if (!isEntity) getCompound(propertyType, property)
+                        else getEntity(propertyType, property)
+                    }
+                }
 
                 childEntities.add(childEntity)
             }

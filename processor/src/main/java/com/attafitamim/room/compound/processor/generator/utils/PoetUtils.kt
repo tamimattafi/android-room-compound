@@ -34,7 +34,8 @@ import java.io.OutputStream
 
 fun createSingleInsertFunction(
     compoundClassName: ClassName,
-    listInsertFunction: FunSpec
+    listInsertFunction: FunSpec,
+    isSuspend: Boolean
 ): FunSpec {
     val listCreationMethodCall = createMethodCallSyntax(
         LIST_OF_METHOD,
@@ -46,11 +47,13 @@ fun createSingleInsertFunction(
         listCreationMethodCall
     )
 
-    return FunSpec.builder(INSERT_METHOD_NAME)
+    val functionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
         .addParameter(COMPOUND_PARAMETER_NAME, compoundClassName)
         .addStatement(insertMethodCall, listInsertFunction)
-        .addModifiers(KModifier.SUSPEND)
-        .build()
+
+    if (isSuspend) functionBuilder.addModifiers(KModifier.SUSPEND)
+
+    return functionBuilder.build()
 }
 
 fun createInsertAnnotationSpec(): AnnotationSpec {

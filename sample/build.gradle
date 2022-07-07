@@ -43,6 +43,12 @@ kapt {
     correctErrorTypes true
 }
 
+ksp {
+    arg("suspendDao", "false")
+    arg("useDaoPrefix", "true")
+    arg("useDaoPostfix", "true")
+}
+
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.8.0'
