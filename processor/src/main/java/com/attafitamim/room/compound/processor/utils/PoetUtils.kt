@@ -1,4 +1,4 @@
-package com.attafitamim.room.compound.processor.generator.utils
+package com.attafitamim.room.compound.processor.utils
 
 import com.attafitamim.room.compound.processor.generator.syntax.*
 import com.squareup.kotlinpoet.FileSpec

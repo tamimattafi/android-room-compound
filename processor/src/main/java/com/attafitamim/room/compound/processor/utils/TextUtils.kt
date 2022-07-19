@@ -1,4 +1,4 @@
-package com.attafitamim.room.compound.processor.generator.utils
+package com.attafitamim.room.compound.processor.utils
 
 fun titleToCamelCase(string: String): String {
     require(string.isNotBlank())

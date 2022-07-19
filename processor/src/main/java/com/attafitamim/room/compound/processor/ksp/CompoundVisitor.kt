@@ -3,16 +3,26 @@ package com.attafitamim.room.compound.processor.ksp
 import com.attafitamim.room.compound.annotations.Compound
 import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
+import com.attafitamim.room.compound.processor.data.EntityJunction
 import com.attafitamim.room.compound.processor.generator.CompoundGenerator
 import com.attafitamim.room.compound.processor.generator.syntax.EMBEDDED_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.ENTITY_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_CLASS_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_ENTITY_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_PARENT_PARAMETER
 import com.attafitamim.room.compound.processor.generator.syntax.RELATION_ANNOTATION
-import com.attafitamim.room.compound.processor.generator.utils.throwException
+import com.attafitamim.room.compound.processor.generator.syntax.RELATION_ENTITY_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.RELATION_JUNCTION_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.RELATION_PARENT_PARAMETER
+import com.attafitamim.room.compound.processor.utils.stringValue
+import com.attafitamim.room.compound.processor.utils.throwException
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.symbol.ClassKind
+import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration
+import com.google.devtools.ksp.symbol.KSType
 import com.google.devtools.ksp.symbol.KSVisitorVoid
 
 class CompoundVisitor(
@@ -61,7 +71,9 @@ class CompoundVisitor(
     private fun getCompound(
         typeClassDeclaration: KSClassDeclaration,
         propertyDeclaration: KSPropertyDeclaration? = null,
-        isCollection: Boolean = false
+        isEmbedded: Boolean,
+        isCollection: Boolean = false,
+        junction: EntityJunction? = null
     ): EntityData.Compound {
         if (typeClassDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
@@ -86,7 +98,9 @@ class CompoundVisitor(
         return EntityData.Compound(
             propertyName,
             isNullable,
+            isEmbedded,
             isCollection,
+            junction,
             childEntities
         )
     }
@@ -94,7 +108,9 @@ class CompoundVisitor(
     private fun getEntity(
         typeClassDeclaration: KSClassDeclaration,
         propertyDeclaration: KSPropertyDeclaration,
-        isCollection: Boolean = false
+        isEmbedded: Boolean,
+        isCollection: Boolean = false,
+        junction: EntityJunction? = null
     ): EntityData.Entity {
         val packageName = typeClassDeclaration.packageName.asString()
         val className = typeClassDeclaration.simpleName.asString()
@@ -102,7 +118,9 @@ class CompoundVisitor(
         return EntityData.Entity(
             propertyDeclaration.simpleName.getShortName(),
             propertyDeclaration.type.resolve().isMarkedNullable,
+            isEmbedded,
             isCollection,
+            junction,
             packageName,
             className,
         )
@@ -113,10 +131,17 @@ class CompoundVisitor(
         forEach { property ->
             val propertyType = property.type.resolve().declaration as KSClassDeclaration
 
-            val isValidEntity = property.annotations.any { annotation ->
+            val isEmbedded = property.annotations.any { annotation ->
                 val shortName = annotation.shortName.getShortName()
-                shortName == RELATION_ANNOTATION || shortName == EMBEDDED_ANNOTATION
+                shortName == EMBEDDED_ANNOTATION
             }
+
+            val isRelation = property.annotations.any { annotation ->
+                val shortName = annotation.shortName.getShortName()
+                shortName == RELATION_ANNOTATION
+            }
+
+            val isValidEntity = isEmbedded || isRelation
 
             if (isValidEntity) {
                 val collectionName = Collection::class.simpleName
@@ -127,6 +152,9 @@ class CompoundVisitor(
 
                 val childEntity = when {
                     isCollection -> {
+                        val junction = if (isRelation) property.getEntityJunction()
+                        else null
+
                         val elementType = property.type.resolve()
                             .arguments
                             .first()
@@ -138,8 +166,19 @@ class CompoundVisitor(
                             annotation.shortName.getShortName() == ENTITY_ANNOTATION
                         }
 
-                        if (!isElementEntity) getCompound(elementType, property, isCollection)
-                        else getEntity(elementType, property, isCollection)
+                        if (!isElementEntity) getCompound(
+                            elementType,
+                            property,
+                            isEmbedded,
+                            isCollection,
+                            junction
+                        ) else getEntity(
+                            elementType,
+                            property,
+                            isEmbedded,
+                            isCollection,
+                            junction
+                        )
                     }
 
                     else -> {
@@ -147,8 +186,8 @@ class CompoundVisitor(
                             annotation.shortName.getShortName() == ENTITY_ANNOTATION
                         }
 
-                        if (!isEntity) getCompound(propertyType, property)
-                        else getEntity(propertyType, property)
+                        if (!isEntity) getCompound(propertyType, property, isEmbedded)
+                        else getEntity(propertyType, property, isEmbedded)
                     }
                 }
 
@@ -157,5 +196,43 @@ class CompoundVisitor(
         }
 
         return childEntities
+    }
+
+    private fun KSPropertyDeclaration.getEntityJunction(): EntityJunction? {
+        val relationAnnotation = annotations.firstOrNull { annotation ->
+            val shortName = annotation.shortName.getShortName()
+            shortName == RELATION_ANNOTATION
+        } ?: return null
+
+        val relationArguments = relationAnnotation.arguments.associateBy { valueArgument ->
+            valueArgument.name?.getShortName()
+        }
+
+        val junctionAnnotation = relationArguments[RELATION_JUNCTION_PARAMETER]?.value
+                as? KSAnnotation ?: return null
+
+        val junctionArguments = junctionAnnotation.arguments.associateBy { valueArgument ->
+            valueArgument.name?.getShortName()
+        }
+
+        val junctionType = junctionArguments[JUNCTION_CLASS_PARAMETER]?.value
+                as? KSType ?: return null
+
+        val junctionClass = junctionType.declaration as? KSClassDeclaration ?: return null
+
+        if (junctionType.declaration.simpleName.getShortName() == Object::class.java.simpleName)
+            return null
+
+        val packageName = junctionClass.packageName.asString()
+        val className = junctionClass.simpleName.asString()
+
+        return EntityJunction(
+            packageName,
+            className,
+            relationArguments.getValue(RELATION_PARENT_PARAMETER).stringValue,
+            relationArguments.getValue(RELATION_ENTITY_PARAMETER).stringValue,
+            junctionArguments.getValue(JUNCTION_PARENT_PARAMETER).stringValue,
+            junctionArguments.getValue(JUNCTION_ENTITY_PARAMETER).stringValue
+        )
     }
 }

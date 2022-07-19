@@ -8,11 +8,13 @@ import com.attafitamim.room.compound.sample.room.entities.MainEntity
 import com.attafitamim.room.compound.sample.room.entities.ISecondCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.SecondEntity
 import com.attafitamim.room.compound.sample.room.entities.IThirdCompoundDao
+import com.attafitamim.room.compound.sample.room.entities.MainSecondJunction
 import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
 
 @Database(
     entities = [
         MainEntity::class,
+        MainSecondJunction::class,
         SecondEntity::class,
         ThirdEntity::class,
         ForthEntity::class

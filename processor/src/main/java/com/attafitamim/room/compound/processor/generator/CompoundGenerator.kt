@@ -3,7 +3,7 @@ package com.attafitamim.room.compound.processor.generator
 import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.generator.syntax.*
-import com.attafitamim.room.compound.processor.generator.utils.*
+import com.attafitamim.room.compound.processor.utils.*
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
 import com.squareup.kotlinpoet.*
@@ -93,12 +93,12 @@ class CompoundGenerator(
         if (isSuspendDao) functionBuilder.addModifiers(KModifier.SUSPEND)
 
         val presentEntities = HashSet<String>()
-        fun addInsertParameter(entityData: EntityData.Entity) {
-            val entityName = titleToCamelCase(entityData.className)
+        fun addInsertParameter(packageName: String, className: String) {
+            val entityName = titleToCamelCase(className)
             if (presentEntities.contains(entityName)) return
             presentEntities.add(entityName)
 
-            val entityClassName = ClassName(entityData.packageName, entityData.className)
+            val entityClassName = ClassName(packageName, className)
 
             val entityListName = Collection::class.asClassName()
                 .parameterizedBy(entityClassName)
@@ -110,12 +110,19 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
+            entityData.junction?.let { junction ->
+                addInsertParameter(junction.packageName, junction.className)
+            }
+
             when (entityData) {
                 is EntityData.Compound -> entityData.entities.forEach { childEntity ->
                     handleEntity(childEntity)
                 }
 
-                is EntityData.Entity -> addInsertParameter(entityData)
+                is EntityData.Entity -> addInsertParameter(
+                    entityData.packageName,
+                    entityData.className
+                )
             }
         }
 
@@ -208,8 +215,8 @@ class CompoundGenerator(
 
         codeBlockBuilder.addStatement(insertMethodCall)
 
-        fun addInsertParameter(entityData: EntityData.Entity) {
-            val entityName = titleToCamelCase(entityData.className)
+        fun addInsertParameter(className: String) {
+            val entityName = titleToCamelCase(className)
             if (presentEntities.contains(entityName)) return
             presentEntities.add(entityName)
 
@@ -221,12 +228,20 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
+            entityData.junction?.let { junction ->
+                addInsertParameter(junction.className)
+            }
+
             when (entityData) {
-                is EntityData.Compound -> entityData.entities.forEach { childEntity ->
-                    handleEntity(childEntity)
+                is EntityData.Compound -> {
+                    entityData.entities.forEach { childEntity ->
+                        handleEntity(childEntity)
+                    }
                 }
 
-                is EntityData.Entity -> addInsertParameter(entityData)
+                is EntityData.Entity -> {
+                    addInsertParameter(entityData.className)
+                }
             }
         }
 
@@ -241,12 +256,12 @@ class CompoundGenerator(
         val presentEntityLists = HashSet<String>()
         val codeBlockBuilder = CodeBlock.builder()
 
-        fun addListInitializationStatement(entityData: EntityData.Entity) {
-            val listName = titleToCamelCase(entityData.className)
+        fun addListInitializationStatement(packageName: String, className: String) {
+            val listName = titleToCamelCase(className)
             if (presentEntityLists.contains(listName)) return
             presentEntityLists.add(listName)
 
-            val entityClassName = ClassName(entityData.packageName, entityData.className)
+            val entityClassName = ClassName(packageName, className)
             val parentSetName = HashSet::class.asClassName().parameterizedBy(entityClassName)
 
             val initializationSyntax = createInitializationSyntax(listName)
@@ -254,12 +269,19 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
+            entityData.junction?.let { junction ->
+                addListInitializationStatement(junction.packageName, junction.className)
+            }
+
             when (entityData) {
                 is EntityData.Compound -> entityData.entities.forEach { childEntity ->
                     handleEntity(childEntity)
                 }
 
-                is EntityData.Entity -> addListInitializationStatement(entityData)
+                is EntityData.Entity -> addListInitializationStatement(
+                    entityData.packageName,
+                    entityData.className
+                )
             }
         }
 
