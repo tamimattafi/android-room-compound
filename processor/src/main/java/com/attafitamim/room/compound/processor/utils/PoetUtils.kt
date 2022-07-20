@@ -26,7 +26,7 @@ fun createListAdditionSyntax(
         )
 
         append(
-            propertyAccessSyntax.properAccess,
+            propertyAccessSyntax.chain,
             NULLABLE_SIGN,
             INSTANCE_ACCESS_KEY,
             letMethodCall
@@ -34,16 +34,29 @@ fun createListAdditionSyntax(
     } else {
         val listAddMethodCall = createMethodCallSyntax(
             additionMethod,
-            propertyAccessSyntax.properAccess
+            propertyAccessSyntax.chain
         )
         append(listName, INSTANCE_ACCESS_KEY, listAddMethodCall)
     }
 }
 
-fun createForEachSyntax(collectionName: String, isNullable: Boolean) = buildString {
+fun createForEachSyntax(
+    collectionName: String,
+    elementName: String,
+    isNullable: Boolean
+) = buildString {
     append(collectionName)
     if (isNullable) append(NULLABLE_SIGN)
-    append(INSTANCE_ACCESS_KEY, FOR_EACH_METHOD)
+    append(
+        INSTANCE_ACCESS_KEY,
+        FOR_EACH_METHOD,
+        KEYWORD_SEPARATOR,
+        CURLY_BRACE_OPEN_PARENTHESIS,
+        KEYWORD_SEPARATOR,
+        elementName,
+        KEYWORD_SEPARATOR,
+        LAMBDA_ARROW
+    )
 }
 
 fun createAssignSyntax(variableName: String) = buildString {

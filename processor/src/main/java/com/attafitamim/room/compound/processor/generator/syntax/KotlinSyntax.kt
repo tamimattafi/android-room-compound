@@ -11,12 +11,13 @@ const val CLASS_ACCESS_KEY = "::"
 // Control flow
 const val PARAMETER_OPEN_PARENTHESIS = "("
 const val PARAMETER_CLOSE_PARENTHESIS = ")"
+const val CURLY_BRACE_OPEN_PARENTHESIS = "{"
 const val INITIALIZATION_SIGN = " = "
 const val NULLABLE_SIGN = "?"
+const val LAMBDA_ARROW = "->"
 
 // Keywords
 const val IMMUTABLE_KEYWORD = "val"
-const val IT_KEYWORD = "it"
 
 // Methods
 const val FOR_EACH_METHOD = "forEach"

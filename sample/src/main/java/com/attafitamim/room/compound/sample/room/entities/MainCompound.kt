@@ -22,6 +22,17 @@ data class MainCompound(
     val secondaryCompounds: List<SecondCompound>?,
 
     @Relation(
+        parentColumn = "name",
+        entityColumn = "name",
+        associateBy = Junction(
+            value = MainSecondJunction::class,
+            parentColumn = "mainId",
+            entityColumn = "secondId"
+        )
+    )
+    val secondaryEntities: List<SecondEntity>?,
+
+    @Relation(
         parentColumn = "",
         entityColumn = ""
     )

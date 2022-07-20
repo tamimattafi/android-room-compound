@@ -4,26 +4,15 @@ import com.attafitamim.room.compound.annotations.Compound
 import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.EntityJunction
+import com.attafitamim.room.compound.processor.data.info.TypeInfo
+import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.generator.CompoundGenerator
-import com.attafitamim.room.compound.processor.generator.syntax.EMBEDDED_ANNOTATION
-import com.attafitamim.room.compound.processor.generator.syntax.ENTITY_ANNOTATION
-import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_CLASS_PARAMETER
-import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_ENTITY_PARAMETER
-import com.attafitamim.room.compound.processor.generator.syntax.JUNCTION_PARENT_PARAMETER
-import com.attafitamim.room.compound.processor.generator.syntax.RELATION_ANNOTATION
-import com.attafitamim.room.compound.processor.generator.syntax.RELATION_ENTITY_PARAMETER
-import com.attafitamim.room.compound.processor.generator.syntax.RELATION_JUNCTION_PARAMETER
-import com.attafitamim.room.compound.processor.generator.syntax.RELATION_PARENT_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.*
 import com.attafitamim.room.compound.processor.utils.stringValue
 import com.attafitamim.room.compound.processor.utils.throwException
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.KSPLogger
-import com.google.devtools.ksp.symbol.ClassKind
-import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSPropertyDeclaration
-import com.google.devtools.ksp.symbol.KSType
-import com.google.devtools.ksp.symbol.KSVisitorVoid
+import com.google.devtools.ksp.symbol.*
 
 class CompoundVisitor(
     private val codeGenerator: CodeGenerator,
@@ -32,7 +21,7 @@ class CompoundVisitor(
 ) : KSVisitorVoid() {
 
     private val compoundGenerator by lazy {
-        CompoundGenerator(codeGenerator, options)
+        CompoundGenerator(codeGenerator, logger, options)
     }
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
@@ -92,14 +81,21 @@ class CompoundVisitor(
             typeClassDeclaration
         )
 
-        val propertyName = propertyDeclaration?.simpleName?.getShortName().orEmpty()
-        val isNullable = propertyDeclaration?.type?.resolve()?.isMarkedNullable ?: false
+        val typeInfo = TypeInfo(
+            typeClassDeclaration.packageName.asString(),
+            typeClassDeclaration.simpleName.asString(),
+            isCollection
+        )
+
+        val propertyInfo = PropertyInfo(
+            propertyDeclaration?.simpleName?.getShortName().orEmpty(),
+            isNullable = propertyDeclaration?.type?.resolve()?.isMarkedNullable ?: false
+        )
 
         return EntityData.Compound(
-            propertyName,
-            isNullable,
+            typeInfo,
+            propertyInfo,
             isEmbedded,
-            isCollection,
             junction,
             childEntities
         )
@@ -112,17 +108,22 @@ class CompoundVisitor(
         isCollection: Boolean = false,
         junction: EntityJunction? = null
     ): EntityData.Entity {
-        val packageName = typeClassDeclaration.packageName.asString()
-        val className = typeClassDeclaration.simpleName.asString()
+        val typeInfo = TypeInfo(
+            typeClassDeclaration.packageName.asString(),
+            typeClassDeclaration.simpleName.asString(),
+            isCollection
+        )
+
+        val propertyInfo = PropertyInfo(
+            propertyDeclaration.simpleName.getShortName(),
+            propertyDeclaration.type.resolve().isMarkedNullable
+        )
 
         return EntityData.Entity(
-            propertyDeclaration.simpleName.getShortName(),
-            propertyDeclaration.type.resolve().isMarkedNullable,
+            typeInfo,
+            propertyInfo,
             isEmbedded,
-            isCollection,
-            junction,
-            packageName,
-            className,
+            junction
         )
     }
 

@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val mainEntity = MainEntity("mainEntity", "1/2/3")
-        val mainCompound = MainCompound(mainEntity, listOf(secondCompound), secondCompound)
+        val mainCompound = MainCompound(mainEntity, listOf(secondCompound), listOf(secondEntity), secondCompound)
 
         GlobalScope.launch {
             database.mainCompoundDao.insertOrUpdate(mainCompound)

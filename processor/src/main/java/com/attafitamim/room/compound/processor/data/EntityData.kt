@@ -1,28 +1,27 @@
 package com.attafitamim.room.compound.processor.data
 
+import com.attafitamim.room.compound.processor.data.info.TypeInfo
+import com.attafitamim.room.compound.processor.data.info.PropertyInfo
+
 sealed interface EntityData {
-    val propertyName: String
-    val isNullable: Boolean
+    val typeInfo: TypeInfo
+    val propertyInfo: PropertyInfo
     val isEmbedded: Boolean
-    val isCollection: Boolean
     val junction: EntityJunction?
 
+
     data class Compound(
-        override val propertyName: String,
-        override val isNullable: Boolean,
+        override val typeInfo: TypeInfo,
+        override val propertyInfo: PropertyInfo,
         override val isEmbedded: Boolean,
-        override val isCollection: Boolean,
         override val junction: EntityJunction?,
         val entities: List<EntityData>
     ) : EntityData
 
     data class Entity(
-        override val propertyName: String,
-        override val isNullable: Boolean,
+        override val typeInfo: TypeInfo,
+        override val propertyInfo: PropertyInfo,
         override val isEmbedded: Boolean,
-        override val isCollection: Boolean,
-        override val junction: EntityJunction?,
-        val packageName: String,
-        val className: String
+        override val junction: EntityJunction?
     ) : EntityData
 }
