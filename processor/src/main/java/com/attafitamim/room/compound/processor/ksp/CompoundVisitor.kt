@@ -1,15 +1,15 @@
 package com.attafitamim.room.compound.processor.ksp
 
 import com.attafitamim.room.compound.annotations.Compound
-import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
-import com.attafitamim.room.compound.processor.data.EntityJunction
+import com.attafitamim.room.compound.processor.data.utility.EntityJunction
 import com.attafitamim.room.compound.processor.data.info.TypeInfo
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.generator.CompoundGenerator
 import com.attafitamim.room.compound.processor.generator.syntax.*
 import com.attafitamim.room.compound.processor.utils.stringValue
 import com.attafitamim.room.compound.processor.utils.throwException
+import com.attafitamim.room.compound.processor.utils.titleToCamelCase
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.symbol.*
@@ -29,7 +29,7 @@ class CompoundVisitor(
         compoundGenerator.generateDao(compoundData)
     }
 
-    private fun getCompoundData(classDeclaration: KSClassDeclaration): CompoundData {
+    private fun getCompoundData(classDeclaration: KSClassDeclaration): EntityData.MainCompound {
         if (classDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
             classDeclaration
@@ -47,12 +47,20 @@ class CompoundVisitor(
             classDeclaration
         )
 
-        val packageName = classDeclaration.packageName.asString()
-        val className = classDeclaration.simpleName.asString()
+        val typeInfo = TypeInfo(
+            classDeclaration.packageName.asString(),
+            classDeclaration.simpleName.asString(),
+        )
 
-        return CompoundData(
-            packageName,
-            className,
+        val propertyInfo = PropertyInfo(
+            titleToCamelCase(typeInfo.className),
+            isNullable = false,
+            isCollection = true
+        )
+
+        return EntityData.MainCompound(
+            typeInfo,
+            propertyInfo,
             childEntities
         )
     }
@@ -84,12 +92,13 @@ class CompoundVisitor(
         val typeInfo = TypeInfo(
             typeClassDeclaration.packageName.asString(),
             typeClassDeclaration.simpleName.asString(),
-            isCollection
+
         )
 
         val propertyInfo = PropertyInfo(
             propertyDeclaration?.simpleName?.getShortName().orEmpty(),
-            isNullable = propertyDeclaration?.type?.resolve()?.isMarkedNullable ?: false
+            isNullable = propertyDeclaration?.type?.resolve()?.isMarkedNullable ?: false,
+            isCollection
         )
 
         return EntityData.Compound(
@@ -111,12 +120,12 @@ class CompoundVisitor(
         val typeInfo = TypeInfo(
             typeClassDeclaration.packageName.asString(),
             typeClassDeclaration.simpleName.asString(),
-            isCollection
         )
 
         val propertyInfo = PropertyInfo(
             propertyDeclaration.simpleName.getShortName(),
-            propertyDeclaration.type.resolve().isMarkedNullable
+            propertyDeclaration.type.resolve().isMarkedNullable,
+            isCollection
         )
 
         return EntityData.Entity(

@@ -1,6 +1,5 @@
 package com.attafitamim.room.compound.processor.generator
 
-import com.attafitamim.room.compound.processor.data.CompoundData
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.generator.syntax.*
@@ -26,14 +25,18 @@ class CompoundGenerator(
     private val useDaoPostfix: Boolean get() =
         options["useDaoPostfix"] == "true"
 
-    fun generateDao(compoundData: CompoundData) {
+    fun generateDao(compoundData: EntityData.MainCompound) {
         val fileName = buildString {
             if (useDaoPrefix) append(DAO_PREFIX)
-            append(compoundData.className)
+            append(compoundData.typeInfo.className)
             if (useDaoPostfix) append(DAO_POSTFIX)
         }
 
-        val compoundClassName = ClassName(compoundData.packageName, compoundData.className)
+        val compoundClassName = ClassName(
+            compoundData.typeInfo.packageName,
+            compoundData.typeInfo.className
+        )
+
         val compoundListName = Collection::class.asClassName()
             .parameterizedBy(compoundClassName)
 
@@ -72,13 +75,13 @@ class CompoundGenerator(
             .addFunction(entityInsertFunctionBuilder)
             .build()
 
-        val fileSpec = FileSpec.builder(compoundData.packageName, fileName)
+        val fileSpec = FileSpec.builder(compoundData.typeInfo.packageName, fileName)
             .addType(interfaceSpec)
             .build()
 
         val outputFile = codeGenerator.createNewFile(
             Dependencies(aggregating = false),
-            compoundData.packageName,
+            compoundData.typeInfo.packageName,
             fileName
         )
 
@@ -86,7 +89,7 @@ class CompoundGenerator(
     }
 
     private fun createEntityInsertFunction(
-        compoundData: CompoundData
+        compoundData: EntityData.MainCompound
     ): FunSpec {
         val insertAnnotation = createInsertAnnotationSpec()
         val functionBuilder = FunSpec.builder(INSERT_ENTITIES_METHOD_NAME)
@@ -113,28 +116,36 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
-            entityData.junction?.let { junction ->
-                addInsertParameter(junction.packageName, junction.className)
-            }
-
             when (entityData) {
-                is EntityData.Compound -> entityData.entities.forEach { childEntity ->
+                is EntityData.MainCompound -> entityData.entities.forEach { childEntity ->
                     handleEntity(childEntity)
                 }
 
-                is EntityData.Entity -> addInsertParameter(
-                    entityData.typeInfo.packageName,
-                    entityData.typeInfo.className
-                )
+                is EntityData.Nested -> {
+                    entityData.junction?.let { junction ->
+                        addInsertParameter(junction.packageName, junction.className)
+                    }
+
+                    when (entityData) {
+                        is EntityData.Compound -> entityData.entities.forEach { childEntity ->
+                            handleEntity(childEntity)
+                        }
+
+                        is EntityData.Entity -> addInsertParameter(
+                            entityData.typeInfo.packageName,
+                            entityData.typeInfo.className
+                        )
+                    }
+                }
             }
         }
 
-        compoundData.entities.forEach(::handleEntity)
+        handleEntity(compoundData)
         return functionBuilder.build()
     }
 
     private fun createListMappingBlock(
-        compoundData: CompoundData
+        compoundData: EntityData.MainCompound
     ): CodeBlock {
         val codeBlockBuilder = CodeBlock.builder()
 
@@ -147,45 +158,20 @@ class CompoundGenerator(
             codeBlockBuilder.beginControlFlow(forEachSyntax)
         }
 
-        val itemName = createListItemName(compoundData.className)
+        val itemName = createListItemName(compoundData.typeInfo.className)
         addForEachStatement(COMPOUND_LIST_PARAMETER_NAME, itemName)
 
-        fun getEmbeddedPropertyInfo(
-            parents: List<EntityData>
-        ): PropertyInfo? {
-            parents.asReversed().forEach { entityData ->
-                return when (entityData) {
-                    is EntityData.Compound -> entityData.entities.first(EntityData::isEmbedded)
-                        .propertyInfo
-
-                    is EntityData.Entity -> null
-                }
-            }
-
-            return compoundData.entities.first(EntityData::isEmbedded).propertyInfo
-        }
-
         fun handleJunction(
-            entityData: EntityData,
+            entityData: EntityData.Nested,
             parents: List<EntityData>,
             accessProperties: List<PropertyInfo>
         ) {
             val junction = entityData.junction
             if (junction != null) {
                 val listItemName = createListItemName(entityData.typeInfo.className)
+
                 val junctionClassName = ClassName(junction.packageName, junction.className)
-                val listName = titleToCamelCase(junction.className)
-
-                val parentPropertyInfo = getEmbeddedPropertyInfo(parents) ?: entityData.propertyInfo
-                val entityPropertyInfo = getEmbeddedPropertyInfo(listOf(entityData))
-
-                val embeddedParentAccessIndex = accessProperties.indexOf(parentPropertyInfo).takeIf {
-                    it > -1
-                }
-
-                val embeddedEntityAccessIndex = accessProperties.indexOf(entityPropertyInfo).takeIf {
-                    it > -1
-                }
+                val junctionListName = titleToCamelCase(junction.className)
 
                 val entityAccessSyntax = createPropertyAccessSyntax(
                     accessProperties,
@@ -198,49 +184,11 @@ class CompoundGenerator(
                     entityAccessSyntax.handleNullability
                 )
 
-                val embeddedParentAccessParents = if (embeddedParentAccessIndex != null) {
-                    parents.subList(0, embeddedParentAccessIndex).map(EntityData::propertyInfo)
-                } else emptyList()
-
-                val embeddedParentAccessSyntax = createPropertyAccessSyntax(
-                    embeddedParentAccessParents,
-                    parentPropertyInfo
-                )
-
-                val embeddedEntityAccessParents = if (embeddedEntityAccessIndex != null) {
-                    accessProperties.subList(0, embeddedEntityAccessIndex)
-                } else emptyList()
-
-                val embeddedEntityAccessSyntax = entityPropertyInfo?.let { propertyInfo ->
-                    createPropertyAccessSyntax(
-                        embeddedEntityAccessParents,
-                        propertyInfo
-                    )
-                }
-
-                val parentColumnAccessSyntax = embeddedParentAccessSyntax.run {
-                    buildString {
-                        append(chain)
-                        if (handleNullability) append("?")
-                        append(".", junction.entityColumn)
-                    }
-                }
-
-                val entityColumnAccessSyntax = embeddedEntityAccessSyntax?.run {
-                    buildString {
-                        append(chain)
-                        if (handleNullability) append("?")
-                        append(".", junction.entityColumn)
-                    }
-                } ?: buildString {
-                    append(listItemName, ".", junction.entityColumn)
-                }
-
                 codeBlockBuilder.addStatement(buildString {
-                    append(listName, ".add(")
+                    append(junctionListName, ".add(")
                     append("%T(")
-                    append(junction.junctionParentColumn, " = ", parentColumnAccessSyntax, ", ")
-                    append(junction.junctionEntityColumn, " = ", entityColumnAccessSyntax, ")")
+                    append(junction.junctionParentColumn, " = ", "\"\"", ", ")
+                    append(junction.junctionEntityColumn, " = ", "\"\"", ")")
                     append(")")
                 }, junctionClassName)
 
@@ -254,81 +202,81 @@ class CompoundGenerator(
             accessProperties: List<PropertyInfo> = listOf()
         ) {
             when (entityData) {
-                is EntityData.Compound -> {
-                    if (entityData.typeInfo.isCollection) {
+                is EntityData.MainCompound -> entityData.entities.forEach { compoundEntityData ->
+                    handleEntity(
+                        compoundEntityData,
+                        parents + entityData,
+                        accessProperties + entityData.propertyInfo
+                    )
+                }
+
+                is EntityData.Nested -> when(entityData) {
+                    is EntityData.Compound -> {
+                        if (entityData.propertyInfo.isCollection) {
+                            val propertyAccessSyntax = createPropertyAccessSyntax(
+                                accessProperties,
+                                entityData.propertyInfo
+                            )
+
+                            val listItemName = createListItemName(entityData.typeInfo.className)
+                            addForEachStatement(
+                                propertyAccessSyntax.chain,
+                                listItemName,
+                                propertyAccessSyntax.handleNullability
+                            )
+
+                            val listPropertyInfo = PropertyInfo(
+                                listItemName,
+                                isNullable = false,
+                                isCollection = false
+                            )
+
+                            entityData.entities.forEach { compoundEntityData ->
+                                handleEntity(
+                                    compoundEntityData,
+                                    parents + entityData,
+                                    listOf(listPropertyInfo)
+                                )
+                            }
+
+                            codeBlockBuilder.endControlFlow()
+                        } else entityData.entities.forEach { compoundEntityData ->
+                            handleEntity(
+                                compoundEntityData,
+                                parents + entityData,
+                                accessProperties + entityData.propertyInfo
+                            )
+                        }
+                    }
+
+                    is EntityData.Entity -> {
+                        handleJunction(entityData, parents, accessProperties)
+
+                        val parameterName = titleToCamelCase(entityData.typeInfo.className)
+
                         val propertyAccessSyntax = createPropertyAccessSyntax(
                             accessProperties,
                             entityData.propertyInfo
                         )
 
-                        val listItemName = createListItemName(entityData.typeInfo.className)
-                        addForEachStatement(
-                            propertyAccessSyntax.chain,
-                            listItemName,
-                            propertyAccessSyntax.handleNullability
+                        val listAdditionSyntax = createListAdditionSyntax(
+                            parameterName,
+                            propertyAccessSyntax,
+                            entityData.propertyInfo.isCollection
                         )
 
-                        val listPropertyInfo = PropertyInfo(
-                            listItemName,
-                            isNullable = false
-                        )
-
-                        entityData.entities.forEach { compoundEntityData ->
-                            handleEntity(
-                                compoundEntityData,
-                                parents + entityData,
-                                listOf(listPropertyInfo)
-                            )
-                        }
-
-                        codeBlockBuilder.endControlFlow()
-                    } else entityData.entities.forEach { compoundEntityData ->
-                        handleEntity(
-                            compoundEntityData,
-                            parents + entityData,
-                            accessProperties + entityData.propertyInfo
-                        )
+                        codeBlockBuilder.addStatement(listAdditionSyntax)
                     }
-                }
-
-                is EntityData.Entity -> {
-                    val listItemName = createParentListItemName(accessProperties)
-
-                    handleJunction(entityData, parents, accessProperties)
-
-                    val parameterName = titleToCamelCase(entityData.typeInfo.className)
-
-                    val propertyAccessSyntax = createPropertyAccessSyntax(
-                        accessProperties,
-                        entityData.propertyInfo
-                    )
-
-                    val listAdditionSyntax = createListAdditionSyntax(
-                        parameterName,
-                        propertyAccessSyntax,
-                        entityData.typeInfo.isCollection
-                    )
-
-                    codeBlockBuilder.addStatement(listAdditionSyntax)
                 }
             }
         }
 
-        val compoundPropertyInfo = PropertyInfo(
-            createListItemName(compoundData.className),
-            isNullable = false
-        )
-
-        val accessProperties = listOf(compoundPropertyInfo)
-        compoundData.entities.forEach { entityData ->
-            handleEntity(entityData, accessProperties = accessProperties)
-        }
-
+        handleEntity(compoundData)
         return codeBlockBuilder.endControlFlow().build()
     }
 
     private fun createListInsertBlock(
-        compoundData: CompoundData
+        compoundData: EntityData.MainCompound
     ): CodeBlock {
         val presentEntities = HashSet<String>()
         val codeBlockBuilder = CodeBlock.builder()
@@ -352,31 +300,29 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
-            entityData.junction?.let { junction ->
-                addInsertParameter(junction.className)
-            }
-
             when (entityData) {
-                is EntityData.Compound -> {
-                    entityData.entities.forEach { childEntity ->
-                        handleEntity(childEntity)
-                    }
-                }
+                is EntityData.MainCompound -> entityData.entities.forEach(::handleEntity)
 
-                is EntityData.Entity -> {
-                    addInsertParameter(entityData.typeInfo.className)
+
+                is EntityData.Nested -> {
+                    entityData.junction?.let { junction ->
+                        addInsertParameter(junction.className)
+                    }
+
+                    when (entityData) {
+                        is EntityData.Compound -> entityData.entities.forEach(::handleEntity)
+
+                        is EntityData.Entity -> {
+                            addInsertParameter(entityData.typeInfo.className)
+                        }
+                    }
                 }
             }
         }
 
-        compoundData.entities.forEach(::handleEntity)
-
+        handleEntity(compoundData)
         return codeBlockBuilder.addStatement(PARAMETER_CLOSE_PARENTHESIS).build()
     }
-
-    private fun createParentListItemName(
-        accessProperties: List<PropertyInfo>
-    ): String = accessProperties.first().name
 
     private fun createListItemName(
         className: String,
@@ -386,7 +332,7 @@ class CompoundGenerator(
     }
 
     private fun createListInitializationBlock(
-        compoundData: CompoundData
+        compoundData: EntityData.MainCompound
     ): CodeBlock {
         val presentEntityLists = HashSet<String>()
         val codeBlockBuilder = CodeBlock.builder()
@@ -404,23 +350,27 @@ class CompoundGenerator(
         }
 
         fun handleEntity(entityData: EntityData) {
-            entityData.junction?.let { junction ->
-                addListInitializationStatement(junction.packageName, junction.className)
-            }
-
             when (entityData) {
-                is EntityData.Compound -> entityData.entities.forEach { childEntity ->
-                    handleEntity(childEntity)
-                }
+                is EntityData.MainCompound -> entityData.entities.forEach(::handleEntity)
 
-                is EntityData.Entity -> addListInitializationStatement(
-                    entityData.typeInfo.packageName,
-                    entityData.typeInfo.className
-                )
+                is EntityData.Nested -> {
+                    entityData.junction?.let { junction ->
+                        addListInitializationStatement(junction.packageName, junction.className)
+                    }
+
+                    when (entityData) {
+                        is EntityData.Compound -> entityData.entities.forEach(::handleEntity)
+
+                        is EntityData.Entity -> addListInitializationStatement(
+                            entityData.typeInfo.packageName,
+                            entityData.typeInfo.className
+                        )
+                    }
+                }
             }
         }
 
-        compoundData.entities.forEach(::handleEntity)
+        handleEntity(compoundData)
         return codeBlockBuilder.build()
     }
 
@@ -431,7 +381,11 @@ class CompoundGenerator(
         var handleNullability = false
         val propertyAccess = buildString {
             accessProperties.forEach { accessProperty ->
-                append(accessProperty.name)
+                val name = if (accessProperty.isCollection) createListItemName(accessProperty.name)
+                else accessProperty.name
+
+                append(name)
+
                 handleNullability = handleNullability || accessProperty.isNullable
                 if (handleNullability) append(NULLABLE_SIGN)
                 append(INSTANCE_ACCESS_KEY)

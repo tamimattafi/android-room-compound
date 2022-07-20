@@ -1,4 +1,4 @@
-package com.attafitamim.room.compound.processor.data
+package com.attafitamim.room.compound.processor.data.utility
 
 data class EntityJunction(
     val packageName: String,
