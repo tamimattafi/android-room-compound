@@ -136,8 +136,8 @@ class CompoundVisitor(
         )
     }
 
-    private fun Iterator<KSPropertyDeclaration>.toChildEntities(): List<EntityData> {
-        val childEntities = ArrayList<EntityData>()
+    private fun Iterator<KSPropertyDeclaration>.toChildEntities(): List<EntityData.Nested> {
+        val childEntities = ArrayList<EntityData.Nested>()
         forEach { property ->
             val propertyType = property.type.resolve().declaration as KSClassDeclaration
 

@@ -16,7 +16,7 @@ sealed interface EntityData {
     data class MainCompound(
         override val typeInfo: TypeInfo,
         override val propertyInfo: PropertyInfo,
-        val entities: List<EntityData>
+        val entities: List<Nested>
     ) : EntityData
 
     data class Compound(
@@ -24,7 +24,7 @@ sealed interface EntityData {
         override val propertyInfo: PropertyInfo,
         override val isEmbedded: Boolean,
         override val junction: EntityJunction?,
-        val entities: List<EntityData>
+        val entities: List<Nested>
     ) : Nested
 
     data class Entity(

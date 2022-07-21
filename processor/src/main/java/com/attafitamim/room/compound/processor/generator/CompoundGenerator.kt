@@ -2,13 +2,46 @@ package com.attafitamim.room.compound.processor.generator
 
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
-import com.attafitamim.room.compound.processor.generator.syntax.*
-import com.attafitamim.room.compound.processor.utils.*
+import com.attafitamim.room.compound.processor.generator.syntax.COMPOUND_LIST_PARAMETER_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.COMPOUND_PARAMETER_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY
+import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY_REPLACE
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_POSTFIX
+import com.attafitamim.room.compound.processor.generator.syntax.DAO_PREFIX
+import com.attafitamim.room.compound.processor.generator.syntax.INSERT_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.INSERT_ENTITIES_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.INSERT_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.INSTANCE_ACCESS_KEY
+import com.attafitamim.room.compound.processor.generator.syntax.LIST_ITEM_POSTFIX
+import com.attafitamim.room.compound.processor.generator.syntax.LIST_OF_METHOD
+import com.attafitamim.room.compound.processor.generator.syntax.NULLABLE_SIGN
+import com.attafitamim.room.compound.processor.generator.syntax.ON_CONFLICT_PARAMETER
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_CLOSE_PARENTHESIS
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_OPEN_PARENTHESIS
+import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_SEPARATOR
+import com.attafitamim.room.compound.processor.generator.syntax.PropertyAccessSyntax
+import com.attafitamim.room.compound.processor.generator.syntax.ROOM_PACKAGE
+import com.attafitamim.room.compound.processor.utils.createAssignSyntax
+import com.attafitamim.room.compound.processor.utils.createForEachSyntax
+import com.attafitamim.room.compound.processor.utils.createInitializationSyntax
+import com.attafitamim.room.compound.processor.utils.createListAdditionSyntax
+import com.attafitamim.room.compound.processor.utils.createMethodCallSyntax
+import com.attafitamim.room.compound.processor.utils.titleToCamelCase
+import com.attafitamim.room.compound.processor.utils.writeToFile
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.processing.KSPLogger
-import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.asClassName
 
 class CompoundGenerator(
     private val codeGenerator: CodeGenerator,
@@ -184,11 +217,28 @@ class CompoundGenerator(
                     entityAccessSyntax.handleNullability
                 )
 
+                val listItemPropertyInfo = PropertyInfo(
+                    listItemName,
+                    isNullable = false,
+                    isCollection = false
+                )
+
+                val embeddedParentAccessSyntax = createPreviousEmbeddedEntityAccessSyntax(
+                    parents,
+                    junction.parentColumn
+                )
+
+                val embeddedEntityAccessSyntax = createNextEmbeddedEntityAccessSyntax(
+                    listOf(listItemPropertyInfo),
+                    entityData,
+                    junction.entityColumn
+                )
+
                 codeBlockBuilder.addStatement(buildString {
                     append(junctionListName, ".add(")
                     append("%T(")
-                    append(junction.junctionParentColumn, " = ", "\"\"", ", ")
-                    append(junction.junctionEntityColumn, " = ", "\"\"", ")")
+                    append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ", ")
+                    append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, ")")
                     append(")")
                 }, junctionClassName)
 
@@ -273,6 +323,68 @@ class CompoundGenerator(
 
         handleEntity(compoundData)
         return codeBlockBuilder.endControlFlow().build()
+    }
+
+    private fun createPreviousEmbeddedEntityAccessSyntax(
+        parents: List<EntityData>,
+        columnName: String
+    ): PropertyAccessSyntax {
+        val accessParents = parents.map(EntityData::propertyInfo).toMutableList()
+
+        when (val parent = parents.last()) {
+            is EntityData.MainCompound -> {
+                accessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+            }
+
+            is EntityData.Compound -> {
+                accessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+            }
+
+            is EntityData.Entity -> {
+                // Do nothing, same entity
+            }
+        }
+
+        val columnPropertyInfo = PropertyInfo(
+            columnName,
+            isNullable = false,
+            isCollection = false
+        )
+
+        return createPropertyAccessSyntax(accessParents, columnPropertyInfo)
+    }
+
+    private fun createNextEmbeddedEntityAccessSyntax(
+        accessParents: List<PropertyInfo>,
+        entityData: EntityData,
+        columnName: String
+    ): PropertyAccessSyntax {
+        val newAccessParents = accessParents.toMutableList()
+
+        when (entityData) {
+            is EntityData.MainCompound -> {
+                newAccessParents.add(entityData.propertyInfo)
+                newAccessParents.add(entityData.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+            }
+
+            is EntityData.Compound -> {
+                newAccessParents.add(entityData.propertyInfo)
+                newAccessParents.add(entityData.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+            }
+
+            is EntityData.Entity -> {
+                // Do nothing, same entity
+            }
+        }
+
+
+        val columnInfo = PropertyInfo(
+            columnName,
+            isNullable = false,
+            isCollection = false
+        )
+
+        return createPropertyAccessSyntax(newAccessParents, columnInfo)
     }
 
     private fun createListInsertBlock(
