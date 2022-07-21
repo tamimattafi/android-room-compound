@@ -1,6 +1,7 @@
 package com.attafitamim.room.compound.sample.room.entities
 
 import androidx.room.Embedded
+import androidx.room.Junction
 import androidx.room.Relation
 import com.attafitamim.room.compound.annotations.Compound
 
@@ -16,8 +17,13 @@ data class SecondCompound(
     val thirdCompounds: List<ThirdCompound>,
 
     @Relation(
-        parentColumn = "",
-        entityColumn = ""
+        parentColumn = "name",
+        entityColumn = "name",
+        associateBy = Junction(
+            value = SecondThirdJunction::class,
+            parentColumn = "secondId",
+            entityColumn = "thirdId"
+        )
     )
     val thirdCompound: ThirdCompound?,
 

@@ -70,8 +70,9 @@ class CompoundVisitor(
         propertyDeclaration: KSPropertyDeclaration? = null,
         isEmbedded: Boolean,
         isCollection: Boolean = false,
-        junction: EntityJunction? = null
     ): EntityData.Compound {
+        val junction = propertyDeclaration?.getEntityJunction()
+
         if (typeClassDeclaration.classKind != ClassKind.CLASS) logger.throwException(
             "Only classes can be annotated with ${Compound::class}",
             typeClassDeclaration
@@ -114,9 +115,10 @@ class CompoundVisitor(
         typeClassDeclaration: KSClassDeclaration,
         propertyDeclaration: KSPropertyDeclaration,
         isEmbedded: Boolean,
-        isCollection: Boolean = false,
-        junction: EntityJunction? = null
+        isCollection: Boolean = false
     ): EntityData.Entity {
+        val junction = propertyDeclaration.getEntityJunction()
+
         val typeInfo = TypeInfo(
             typeClassDeclaration.packageName.asString(),
             typeClassDeclaration.simpleName.asString(),
@@ -162,9 +164,6 @@ class CompoundVisitor(
 
                 val childEntity = when {
                     isCollection -> {
-                        val junction = if (isRelation) property.getEntityJunction()
-                        else null
-
                         val elementType = property.type.resolve()
                             .arguments
                             .first()
@@ -180,14 +179,12 @@ class CompoundVisitor(
                             elementType,
                             property,
                             isEmbedded,
-                            isCollection,
-                            junction
+                            isCollection
                         ) else getEntity(
                             elementType,
                             property,
                             isEmbedded,
-                            isCollection,
-                            junction
+                            isCollection
                         )
                     }
 

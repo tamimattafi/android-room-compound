@@ -2,8 +2,7 @@ package com.attafitamim.room.compound.processor.generator
 
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
-import com.attafitamim.room.compound.processor.generator.syntax.COMPOUND_LIST_PARAMETER_NAME
-import com.attafitamim.room.compound.processor.generator.syntax.COMPOUND_PARAMETER_NAME
+import com.attafitamim.room.compound.processor.data.utility.EntityJunction
 import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY
 import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY_REPLACE
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
@@ -74,7 +73,7 @@ class CompoundGenerator(
             .parameterizedBy(compoundClassName)
 
         val listInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
-            .addParameter(COMPOUND_LIST_PARAMETER_NAME, compoundListName)
+            .addParameter(compoundData.propertyInfo.name, compoundListName)
 
         if (isSuspendDao) listInsertFunctionBuilder.addModifiers(KModifier.SUSPEND)
 
@@ -92,6 +91,7 @@ class CompoundGenerator(
 
         val singleInsertFunction = createSingleInsertFunction(
             compoundClassName,
+            compoundData.propertyInfo.name,
             listInsertFunction,
             isSuspendDao
         )
@@ -191,58 +191,61 @@ class CompoundGenerator(
             codeBlockBuilder.beginControlFlow(forEachSyntax)
         }
 
-        val itemName = createListItemName(compoundData.typeInfo.className)
-        addForEachStatement(COMPOUND_LIST_PARAMETER_NAME, itemName)
+        val itemName = createListItemName(compoundData.propertyInfo.name)
+        addForEachStatement(compoundData.propertyInfo.name, itemName)
 
         fun handleJunction(
             entityData: EntityData.Nested,
             parents: List<EntityData>,
-            accessProperties: List<PropertyInfo>
+            accessProperties: List<PropertyInfo>,
+            insideCollection: Boolean = false
         ) {
-            val junction = entityData.junction
-            if (junction != null) {
-                val listItemName = createListItemName(entityData.typeInfo.className)
+            val junction = entityData.junction ?: return
+            val listItemName = createListItemName(entityData.propertyInfo.name)
 
-                val junctionClassName = ClassName(junction.packageName, junction.className)
-                val junctionListName = titleToCamelCase(junction.className)
+            val junctionClassName = ClassName(junction.packageName, junction.className)
+            val junctionListName = titleToCamelCase(junction.className)
 
-                val entityAccessSyntax = createPropertyAccessSyntax(
-                    accessProperties,
-                    entityData.propertyInfo
-                )
+            val entityAccessSyntax = createPropertyAccessSyntax(
+                accessProperties,
+                entityData.propertyInfo
+            )
 
+            val listItemPropertyInfo = PropertyInfo(
+                listItemName,
+                isNullable = false,
+                isCollection = false
+            )
+
+            val embeddedParentAccessSyntax = createPreviousEmbeddedEntityAccessSyntax(
+                parents,
+                junction.parentColumn
+            )
+
+            val embeddedEntityAccessSyntax = createNextEmbeddedEntityAccessSyntax(
+                listOf(listItemPropertyInfo),
+                entityData,
+                junction.entityColumn
+            )
+
+            val junctionCreationStatement = createEntityJunctionStatement(
+                junctionListName,
+                junction,
+                embeddedParentAccessSyntax,
+                embeddedEntityAccessSyntax
+            )
+
+            if (entityData.propertyInfo.isCollection && !insideCollection) {
                 addForEachStatement(
                     entityAccessSyntax.chain,
                     listItemName,
                     entityAccessSyntax.handleNullability
                 )
 
-                val listItemPropertyInfo = PropertyInfo(
-                    listItemName,
-                    isNullable = false,
-                    isCollection = false
-                )
-
-                val embeddedParentAccessSyntax = createPreviousEmbeddedEntityAccessSyntax(
-                    parents,
-                    junction.parentColumn
-                )
-
-                val embeddedEntityAccessSyntax = createNextEmbeddedEntityAccessSyntax(
-                    listOf(listItemPropertyInfo),
-                    entityData,
-                    junction.entityColumn
-                )
-
-                codeBlockBuilder.addStatement(buildString {
-                    append(junctionListName, ".add(")
-                    append("%T(")
-                    append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ", ")
-                    append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, ")")
-                    append(")")
-                }, junctionClassName)
-
-                codeBlockBuilder.endControlFlow()
+                codeBlockBuilder.addStatement(junctionCreationStatement, junctionClassName)
+                    .endControlFlow()
+            } else {
+                codeBlockBuilder.addStatement(junctionCreationStatement, junctionClassName)
             }
         }
 
@@ -268,7 +271,7 @@ class CompoundGenerator(
                                 entityData.propertyInfo
                             )
 
-                            val listItemName = createListItemName(entityData.typeInfo.className)
+                            val listItemName = createListItemName(entityData.propertyInfo.name)
                             addForEachStatement(
                                 propertyAccessSyntax.chain,
                                 listItemName,
@@ -281,6 +284,13 @@ class CompoundGenerator(
                                 isCollection = false
                             )
 
+                            handleJunction(
+                                entityData,
+                                parents,
+                                accessProperties,
+                                insideCollection = true
+                            )
+
                             entityData.entities.forEach { compoundEntityData ->
                                 handleEntity(
                                     compoundEntityData,
@@ -290,12 +300,21 @@ class CompoundGenerator(
                             }
 
                             codeBlockBuilder.endControlFlow()
-                        } else entityData.entities.forEach { compoundEntityData ->
-                            handleEntity(
-                                compoundEntityData,
-                                parents + entityData,
-                                accessProperties + entityData.propertyInfo
+                        } else {
+                            handleJunction(
+                                entityData,
+                                parents,
+                                accessProperties,
+                                insideCollection = true
                             )
+
+                            entityData.entities.forEach { compoundEntityData ->
+                                handleEntity(
+                                    compoundEntityData,
+                                    parents + entityData,
+                                    accessProperties + entityData.propertyInfo
+                                )
+                            }
                         }
                     }
 
@@ -363,12 +382,10 @@ class CompoundGenerator(
 
         when (entityData) {
             is EntityData.MainCompound -> {
-                newAccessParents.add(entityData.propertyInfo)
                 newAccessParents.add(entityData.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
             }
 
             is EntityData.Compound -> {
-                newAccessParents.add(entityData.propertyInfo)
                 newAccessParents.add(entityData.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
             }
 
@@ -376,7 +393,6 @@ class CompoundGenerator(
                 // Do nothing, same entity
             }
         }
-
 
         val columnInfo = PropertyInfo(
             columnName,
@@ -437,9 +453,9 @@ class CompoundGenerator(
     }
 
     private fun createListItemName(
-        className: String,
+        listName: String,
     ): String {
-        val camelClassName = titleToCamelCase(className)
+        val camelClassName = titleToCamelCase(listName)
         return buildString { append(camelClassName, LIST_ITEM_POSTFIX) }
     }
 
@@ -512,12 +528,13 @@ class CompoundGenerator(
 
     private fun createSingleInsertFunction(
         compoundClassName: ClassName,
+        parameterName: String,
         listInsertFunction: FunSpec,
         isSuspend: Boolean
     ): FunSpec {
         val listCreationMethodCall = createMethodCallSyntax(
             LIST_OF_METHOD,
-            COMPOUND_PARAMETER_NAME
+            parameterName
         )
 
         val insertMethodCall = createMethodCallSyntax(
@@ -526,12 +543,25 @@ class CompoundGenerator(
         )
 
         val functionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
-            .addParameter(COMPOUND_PARAMETER_NAME, compoundClassName)
+            .addParameter(parameterName, compoundClassName)
             .addStatement(insertMethodCall, listInsertFunction)
 
         if (isSuspend) functionBuilder.addModifiers(KModifier.SUSPEND)
 
         return functionBuilder.build()
+    }
+
+    private fun createEntityJunctionStatement(
+        junctionListName: String,
+        junction: EntityJunction,
+        embeddedParentAccessSyntax: PropertyAccessSyntax,
+        embeddedEntityAccessSyntax: PropertyAccessSyntax
+    ) = buildString {
+        append(junctionListName, ".add(")
+        append("%T(")
+        append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ", ")
+        append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, ")")
+        append(")")
     }
 
     private fun createInsertAnnotationSpec(): AnnotationSpec {
