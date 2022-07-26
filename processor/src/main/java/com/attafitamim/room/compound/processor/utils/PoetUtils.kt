@@ -50,11 +50,11 @@ fun createForEachSyntax(
     append(
         INSTANCE_ACCESS_KEY,
         FOR_EACH_METHOD,
-        KEYWORD_SEPARATOR,
+        NO_WRAP_KEYWORD_SEPARATOR,
         CURLY_BRACE_OPEN_PARENTHESIS,
-        KEYWORD_SEPARATOR,
+        NO_WRAP_KEYWORD_SEPARATOR,
         elementName,
-        KEYWORD_SEPARATOR,
+        NO_WRAP_KEYWORD_SEPARATOR,
         LAMBDA_ARROW
     )
 }
