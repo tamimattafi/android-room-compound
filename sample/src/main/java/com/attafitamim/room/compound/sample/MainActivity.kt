@@ -34,8 +34,8 @@ class MainActivity : AppCompatActivity() {
         val secondCompound = SecondCompound(
             secondEntity,
             listOf(thirdCompound),
+            listOf(thirdEntity),
             thirdCompound,
-            thirdEntity,
             forthEntity
         )
 

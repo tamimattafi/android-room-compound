@@ -5,6 +5,7 @@ import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.data.utility.EntityJunction
 import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY
 import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY_REPLACE
+import com.attafitamim.room.compound.processor.generator.syntax.CONSTANT_NAME_SEPARATOR
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_POSTFIX
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_PREFIX
@@ -42,6 +43,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 
+// TODO(Generator): Refactor generator logic and structure
 class CompoundGenerator(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
@@ -348,15 +350,27 @@ class CompoundGenerator(
         parents: List<EntityData>,
         columnName: String
     ): PropertyAccessSyntax {
-        val accessParents = parents.map(EntityData::propertyInfo).toMutableList()
+        val accessParents = parents.map(EntityData::propertyInfo)
+
+        val collectionIndex = accessParents.indexOfLast { propertyInfo ->
+            propertyInfo.isCollection
+        }.takeIf { index ->
+            index in 1..parents.size
+        }
+
+        val newAccessParents = if (collectionIndex != null) {
+            accessParents.subList(collectionIndex, accessParents.size).toMutableList()
+        } else {
+            accessParents.toMutableList()
+        }
 
         when (val parent = parents.last()) {
             is EntityData.MainCompound -> {
-                accessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+                newAccessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
             }
 
             is EntityData.Compound -> {
-                accessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
+                newAccessParents.add(parent.entities.first(EntityData.Nested::isEmbedded).propertyInfo)
             }
 
             is EntityData.Entity -> {
@@ -370,7 +384,7 @@ class CompoundGenerator(
             isCollection = false
         )
 
-        return createPropertyAccessSyntax(accessParents, columnPropertyInfo)
+        return createPropertyAccessSyntax(newAccessParents, columnPropertyInfo)
     }
 
     private fun createNextEmbeddedEntityAccessSyntax(
@@ -378,7 +392,18 @@ class CompoundGenerator(
         entityData: EntityData,
         columnName: String
     ): PropertyAccessSyntax {
-        val newAccessParents = accessParents.toMutableList()
+        val collectionIndex = accessParents.indexOfLast { propertyInfo ->
+            propertyInfo.isCollection
+        }.takeIf { index ->
+            index in 0..accessParents.lastIndex
+        }
+
+        val newAccessParents = if (collectionIndex != null) {
+            accessParents.toMutableList()
+            //accessParents.subList(collectionIndex, accessParents.size).toMutableList()
+        } else {
+            accessParents.toMutableList()
+        }
 
         when (entityData) {
             is EntityData.MainCompound -> {
@@ -507,23 +532,32 @@ class CompoundGenerator(
         property: PropertyInfo
     ): PropertyAccessSyntax {
         var handleNullability = false
-        val propertyAccess = buildString {
-            accessProperties.forEach { accessProperty ->
-                val name = if (accessProperty.isCollection) createListItemName(accessProperty.name)
-                else accessProperty.name
+        val propertyNameBuilder = StringBuilder()
+        val propertyAccessBuilder = StringBuilder()
 
-                append(name)
+        accessProperties.forEach { accessProperty ->
+            val name = if (accessProperty.isCollection) createListItemName(accessProperty.name)
+            else accessProperty.name
 
-                handleNullability = handleNullability || accessProperty.isNullable
-                if (handleNullability) append(NULLABLE_SIGN)
-                append(INSTANCE_ACCESS_KEY)
-            }
+            propertyAccessBuilder.append(name)
+            propertyNameBuilder.append(name)
 
-            append(property.name)
+            handleNullability = handleNullability || accessProperty.isNullable
+            if (handleNullability) propertyAccessBuilder.append(NULLABLE_SIGN)
+            propertyAccessBuilder.append(INSTANCE_ACCESS_KEY)
+            propertyNameBuilder.append(CONSTANT_NAME_SEPARATOR)
         }
 
+        propertyAccessBuilder.append(property.name)
+        propertyNameBuilder.append(property.name)
+
         handleNullability = handleNullability || property.isNullable
-        return PropertyAccessSyntax(propertyAccess, handleNullability)
+
+        return PropertyAccessSyntax(
+            propertyAccessBuilder.toString(),
+            propertyNameBuilder.toString(),
+            handleNullability
+        )
     }
 
     private fun createSingleInsertFunction(
@@ -557,11 +591,28 @@ class CompoundGenerator(
         embeddedParentAccessSyntax: PropertyAccessSyntax,
         embeddedEntityAccessSyntax: PropertyAccessSyntax
     ) = buildString {
-        append(junctionListName, ".add(")
-        append("%T(")
-        append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ", ")
-        append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, ")")
-        append(")")
+        val handleNullability = embeddedParentAccessSyntax.handleNullability ||
+                embeddedEntityAccessSyntax.handleNullability
+
+        if (handleNullability) {
+            append("if (")
+            if (embeddedParentAccessSyntax.handleNullability) {
+                append("${embeddedParentAccessSyntax.chain} != null")
+                if (embeddedEntityAccessSyntax.handleNullability) append(" && ")
+            }
+
+            if (embeddedEntityAccessSyntax.handleNullability) {
+                append("${embeddedEntityAccessSyntax.chain} != null")
+            }
+
+            append(")\n")
+        }
+
+        append(junctionListName, ".add(\n")
+        append("%T(\n")
+        append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ",\n")
+        append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, "\n)")
+        append("\n)")
     }
 
     private fun createInsertAnnotationSpec(): AnnotationSpec {

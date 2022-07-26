@@ -33,8 +33,8 @@ data class MainCompound(
     val secondaryEntities: List<SecondEntity>?,
 
     @Relation(
-        parentColumn = "",
-        entityColumn = ""
+        parentColumn = "name",
+        entityColumn = "name"
     )
     val secondaryCompound: SecondCompound?
 )

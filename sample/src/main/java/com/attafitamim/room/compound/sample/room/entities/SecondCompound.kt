@@ -8,13 +8,7 @@ import com.attafitamim.room.compound.annotations.Compound
 @Compound
 data class SecondCompound(
     @Embedded
-    val secondaryEntity: SecondEntity,
-
-    @Relation(
-        parentColumn = "",
-        entityColumn = ""
-    )
-    val thirdCompounds: List<ThirdCompound>,
+    val secondaryEntity: SecondEntity?,
 
     @Relation(
         parentColumn = "name",
@@ -25,13 +19,24 @@ data class SecondCompound(
             entityColumn = "thirdId"
         )
     )
-    val thirdCompound: ThirdCompound?,
+    val thirdCompounds: List<ThirdCompound>?,
 
     @Relation(
-        parentColumn = "",
-        entityColumn = ""
+        parentColumn = "name",
+        entityColumn = "name",
+        associateBy = Junction(
+            value = SecondThirdJunction::class,
+            parentColumn = "secondId",
+            entityColumn = "thirdId"
+        )
     )
-    val thirdEntity: ThirdEntity?,
+    val thirdEntity: List<ThirdEntity>?,
+
+    @Relation(
+        parentColumn = "name",
+        entityColumn = "name",
+    )
+    val thirdCompound: ThirdCompound?,
 
     @Relation(
         parentColumn = "",

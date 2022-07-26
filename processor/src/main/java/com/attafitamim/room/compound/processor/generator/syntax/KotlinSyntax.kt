@@ -15,6 +15,7 @@ const val CURLY_BRACE_OPEN_PARENTHESIS = "{"
 const val INITIALIZATION_SIGN = " = "
 const val NULLABLE_SIGN = "?"
 const val LAMBDA_ARROW = "->"
+const val CONSTANT_NAME_SEPARATOR = "_"
 
 // Keywords
 const val IMMUTABLE_KEYWORD = "val"

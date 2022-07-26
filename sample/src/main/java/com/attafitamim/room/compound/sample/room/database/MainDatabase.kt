@@ -9,6 +9,7 @@ import com.attafitamim.room.compound.sample.room.entities.ISecondCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.SecondEntity
 import com.attafitamim.room.compound.sample.room.entities.IThirdCompoundDao
 import com.attafitamim.room.compound.sample.room.entities.MainSecondJunction
+import com.attafitamim.room.compound.sample.room.entities.SecondThirdJunction
 import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
 
 @Database(
@@ -16,6 +17,7 @@ import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
         MainEntity::class,
         MainSecondJunction::class,
         SecondEntity::class,
+        SecondThirdJunction::class,
         ThirdEntity::class,
         ForthEntity::class
     ],
