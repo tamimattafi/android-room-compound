@@ -28,4 +28,5 @@ abstract class MainDatabase : RoomDatabase() {
     abstract val mainCompoundDao: IMainCompoundDao
     abstract val secondCompoundDao: ISecondCompoundDao
     abstract val thirdCompoundDao: IThirdCompoundDao
+    abstract val mainCompound: MainCompound
 }

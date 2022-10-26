@@ -11,7 +11,9 @@ import com.attafitamim.room.compound.sample.room.entities.SecondCompound
 import com.attafitamim.room.compound.sample.room.entities.SecondEntity
 import com.attafitamim.room.compound.sample.room.entities.ThirdCompound
 import com.attafitamim.room.compound.sample.room.entities.ThirdEntity
+import kotlin.time.Duration
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -26,7 +28,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val secondEntity = SecondEntity("secondEntity", "1/2/3")
+        val secondEntity = SecondEntity("mainEntity", "1/2/3")
         val forthEntity = ForthEntity("forthEntity", "1/2/3/4")
         val thirdEntity = ThirdEntity("thirdEntity", "1/2/3")
         val thirdCompound = ThirdCompound(thirdEntity, listOf(secondEntity), listOf(forthEntity))
@@ -44,6 +46,8 @@ class MainActivity : AppCompatActivity() {
 
         GlobalScope.launch {
             database.mainCompoundDao.insertOrUpdate(mainCompound)
+            delay(20000L)
+            database.mainCompound.updateId("mainEntity", "mainEntity10")
         }
     }
 }
