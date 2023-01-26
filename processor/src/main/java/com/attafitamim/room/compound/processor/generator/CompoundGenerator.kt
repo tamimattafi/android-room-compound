@@ -3,8 +3,6 @@ package com.attafitamim.room.compound.processor.generator
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.data.utility.EntityJunction
-import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY
-import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY_REPLACE
 import com.attafitamim.room.compound.processor.generator.syntax.CONSTANT_NAME_SEPARATOR
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_POSTFIX
@@ -16,13 +14,14 @@ import com.attafitamim.room.compound.processor.generator.syntax.INSTANCE_ACCESS_
 import com.attafitamim.room.compound.processor.generator.syntax.LIST_ITEM_POSTFIX
 import com.attafitamim.room.compound.processor.generator.syntax.LIST_OF_METHOD
 import com.attafitamim.room.compound.processor.generator.syntax.NULLABLE_SIGN
-import com.attafitamim.room.compound.processor.generator.syntax.ON_CONFLICT_PARAMETER
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_CLOSE_PARENTHESIS
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_OPEN_PARENTHESIS
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_SEPARATOR
 import com.attafitamim.room.compound.processor.generator.syntax.PropertyAccessSyntax
 import com.attafitamim.room.compound.processor.generator.syntax.ROOM_PACKAGE
-import com.attafitamim.room.compound.processor.utils.createAssignSyntax
+import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_ENTITIES_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_METHOD_NAME
 import com.attafitamim.room.compound.processor.utils.createForEachSyntax
 import com.attafitamim.room.compound.processor.utils.createInitializationSyntax
 import com.attafitamim.room.compound.processor.utils.createListAdditionSyntax
@@ -74,28 +73,69 @@ class CompoundGenerator(
         val compoundListName = Collection::class.asClassName()
             .parameterizedBy(compoundClassName)
 
-        val listInsertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+        val insertOrUpdateFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
             .addParameter(compoundData.propertyInfo.name, compoundListName)
 
-        if (isSuspendDao) listInsertFunctionBuilder.addModifiers(KModifier.SUSPEND)
+        val updateFunctionBuilder = FunSpec.builder(UPDATE_METHOD_NAME)
+            .addParameter(compoundData.propertyInfo.name, compoundListName)
+
+        if (isSuspendDao) {
+            insertOrUpdateFunctionBuilder.addModifiers(KModifier.SUSPEND)
+            updateFunctionBuilder.addModifiers(KModifier.SUSPEND)
+        }
 
         val listInitializationBlock = createListInitializationBlock(compoundData)
-        val insertBlock = createListInsertBlock(compoundData)
         val listMappingBlock = createListMappingBlock(compoundData)
-        val entityInsertFunctionBuilder = createEntityInsertFunction(compoundData)
 
-        listInsertFunctionBuilder
+        val insertListBlock = createListActionBlock(
+            compoundData,
+            INSERT_ENTITIES_METHOD_NAME
+        )
+
+        val updateListBlock = createListActionBlock(
+            compoundData,
+            UPDATE_ENTITIES_METHOD_NAME
+        )
+
+        val insertEntityFunctionBuilder = createEntityActionFunction(
+            compoundData,
+            INSERT_ENTITIES_METHOD_NAME,
+            INSERT_ANNOTATION
+        )
+
+        val updateEntityFunctionBuilder = createEntityActionFunction(
+            compoundData,
+            UPDATE_ENTITIES_METHOD_NAME,
+            UPDATE_ANNOTATION
+        )
+
+        insertOrUpdateFunctionBuilder
             .addCode(listInitializationBlock)
             .addCode(listMappingBlock)
-            .addCode(insertBlock)
+            .addCode(insertListBlock)
 
-        val listInsertFunction = listInsertFunctionBuilder.build()
+        updateFunctionBuilder
+            .addCode(listInitializationBlock)
+            .addCode(listMappingBlock)
+            .addCode(updateListBlock)
 
-        val singleInsertFunction = createSingleInsertFunction(
+        val listInsertFunction = insertOrUpdateFunctionBuilder.build()
+        val listUpdateFunction = updateFunctionBuilder.build()
+
+        val singleInsertFunction = createSingleActionFunction(
             compoundClassName,
             compoundData.propertyInfo.name,
             listInsertFunction,
-            isSuspendDao
+            isSuspendDao,
+            INSERT_METHOD_NAME
+        )
+
+        val singleUpdateFunction = createSingleActionFunction(
+            compoundClassName,
+            compoundData.propertyInfo.name,
+            listUpdateFunction,
+            isSuspendDao,
+            UPDATE_METHOD_NAME
         )
 
         val daoAnnotation = ClassName(
@@ -107,7 +147,10 @@ class CompoundGenerator(
             .addAnnotation(daoAnnotation)
             .addFunction(singleInsertFunction)
             .addFunction(listInsertFunction)
-            .addFunction(entityInsertFunctionBuilder)
+            .addFunction(insertEntityFunctionBuilder)
+            .addFunction(singleUpdateFunction)
+            .addFunction(listUpdateFunction)
+            .addFunction(updateEntityFunctionBuilder)
             .build()
 
         val fileSpec = FileSpec.builder(compoundData.typeInfo.packageName, fileName)
@@ -123,18 +166,26 @@ class CompoundGenerator(
         fileSpec.writeToFile(outputFile)
     }
 
-    private fun createEntityInsertFunction(
-        compoundData: EntityData.MainCompound
+    private fun createEntityActionFunction(
+        compoundData: EntityData.MainCompound,
+        actionName: String,
+        actionAnnotationName: String
     ): FunSpec {
-        val insertAnnotation = createInsertAnnotationSpec()
-        val functionBuilder = FunSpec.builder(INSERT_ENTITIES_METHOD_NAME)
+        val actionAnnotationClassName = ClassName(
+            ROOM_PACKAGE,
+            actionAnnotationName
+        )
+
+        val actionAnnotation = AnnotationSpec.builder(actionAnnotationClassName).build()
+
+        val functionBuilder = FunSpec.builder(actionName)
             .addModifiers(KModifier.ABSTRACT)
-            .addAnnotation(insertAnnotation)
+            .addAnnotation(actionAnnotation)
 
         if (isSuspendDao) functionBuilder.addModifiers(KModifier.SUSPEND)
 
         val presentEntities = HashSet<String>()
-        fun addInsertParameter(packageName: String, className: String) {
+        fun addActionParameter(packageName: String, className: String) {
             val entityName = titleToCamelCase(className)
             if (presentEntities.contains(entityName)) return
             presentEntities.add(entityName)
@@ -158,7 +209,7 @@ class CompoundGenerator(
 
                 is EntityData.Nested -> {
                     entityData.junction?.let { junction ->
-                        addInsertParameter(junction.packageName, junction.className)
+                        addActionParameter(junction.packageName, junction.className)
                     }
 
                     when (entityData) {
@@ -166,7 +217,7 @@ class CompoundGenerator(
                             handleEntity(childEntity)
                         }
 
-                        is EntityData.Entity -> addInsertParameter(
+                        is EntityData.Entity -> addActionParameter(
                             entityData.typeInfo.packageName,
                             entityData.typeInfo.className
                         )
@@ -428,19 +479,20 @@ class CompoundGenerator(
         return createPropertyAccessSyntax(newAccessParents, columnInfo)
     }
 
-    private fun createListInsertBlock(
-        compoundData: EntityData.MainCompound
+    private fun createListActionBlock(
+        compoundData: EntityData.MainCompound,
+        actionMethodName: String
     ): CodeBlock {
         val presentEntities = HashSet<String>()
         val codeBlockBuilder = CodeBlock.builder()
 
-        val insertMethodCall = buildString {
-            append(INSERT_ENTITIES_METHOD_NAME, PARAMETER_OPEN_PARENTHESIS)
+        val actionMethodCall = buildString {
+            append(actionMethodName, PARAMETER_OPEN_PARENTHESIS)
         }
 
-        codeBlockBuilder.addStatement(insertMethodCall)
+        codeBlockBuilder.addStatement(actionMethodCall)
 
-        fun addInsertParameter(className: String) {
+        fun addActionParameter(className: String) {
             val entityName = titleToCamelCase(className)
             if (presentEntities.contains(entityName)) return
             presentEntities.add(entityName)
@@ -459,14 +511,14 @@ class CompoundGenerator(
 
                 is EntityData.Nested -> {
                     entityData.junction?.let { junction ->
-                        addInsertParameter(junction.className)
+                        addActionParameter(junction.className)
                     }
 
                     when (entityData) {
                         is EntityData.Compound -> entityData.entities.forEach(::handleEntity)
 
                         is EntityData.Entity -> {
-                            addInsertParameter(entityData.typeInfo.className)
+                            addActionParameter(entityData.typeInfo.className)
                         }
                     }
                 }
@@ -560,25 +612,26 @@ class CompoundGenerator(
         )
     }
 
-    private fun createSingleInsertFunction(
+    private fun createSingleActionFunction(
         compoundClassName: ClassName,
         parameterName: String,
-        listInsertFunction: FunSpec,
-        isSuspend: Boolean
+        listActionFunction: FunSpec,
+        isSuspend: Boolean,
+        actionName: String
     ): FunSpec {
         val listCreationMethodCall = createMethodCallSyntax(
             LIST_OF_METHOD,
             parameterName
         )
 
-        val insertMethodCall = createMethodCallSyntax(
-            INSERT_METHOD_NAME,
+        val actionMethodCall = createMethodCallSyntax(
+            actionName,
             listCreationMethodCall
         )
 
-        val functionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+        val functionBuilder = FunSpec.builder(actionName)
             .addParameter(parameterName, compoundClassName)
-            .addStatement(insertMethodCall, listInsertFunction)
+            .addStatement(actionMethodCall, listActionFunction)
 
         if (isSuspend) functionBuilder.addModifiers(KModifier.SUSPEND)
 
@@ -613,25 +666,5 @@ class CompoundGenerator(
         append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ",\n")
         append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, "\n)")
         append("\n)")
-    }
-
-    private fun createInsertAnnotationSpec(): AnnotationSpec {
-        val insertAnnotationClassName = ClassName(
-            ROOM_PACKAGE,
-            INSERT_ANNOTATION
-        )
-
-        val conflictStrategyReplaceName = ClassName(
-            ROOM_PACKAGE,
-            listOf(
-                CONFLICT_STRATEGY,
-                CONFLICT_STRATEGY_REPLACE
-            )
-        )
-
-        val onConflictAssignment = createAssignSyntax(ON_CONFLICT_PARAMETER)
-        return AnnotationSpec.builder(insertAnnotationClassName)
-            .addMember(onConflictAssignment, conflictStrategyReplaceName)
-            .build()
     }
 }

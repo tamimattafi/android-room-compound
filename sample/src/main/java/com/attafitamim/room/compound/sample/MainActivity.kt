@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
         GlobalScope.launch {
             database.mainCompoundDao.insertOrUpdate(mainCompound)
             delay(20000L)
+            database.mainCompoundDao.update(mainCompound.copy(mainEntity = mainEntity.copy(date = "LOLz")))
+            delay(20000L)
             database.mainCompound.updateId("mainEntity", "mainEntity10")
         }
     }
