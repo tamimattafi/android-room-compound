@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
         val mainCompound = MainCompound(mainEntity, listOf(secondCompound), listOf(secondEntity), secondCompound)
 
         GlobalScope.launch {
-            database.mainCompoundDao.insertOrUpdate(mainCompound)
+            database.mainCompoundDao.insertOrReplace(mainCompound)
             delay(20000L)
             database.mainCompoundDao.update(mainCompound.copy(mainEntity = mainEntity.copy(date = "LOLz")))
             delay(20000L)

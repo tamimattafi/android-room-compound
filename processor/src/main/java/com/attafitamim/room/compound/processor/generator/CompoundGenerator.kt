@@ -3,17 +3,26 @@ package com.attafitamim.room.compound.processor.generator
 import com.attafitamim.room.compound.processor.data.EntityData
 import com.attafitamim.room.compound.processor.data.info.PropertyInfo
 import com.attafitamim.room.compound.processor.data.utility.EntityJunction
+import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY
+import com.attafitamim.room.compound.processor.generator.syntax.CONFLICT_STRATEGY_REPLACE
 import com.attafitamim.room.compound.processor.generator.syntax.CONSTANT_NAME_SEPARATOR
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_POSTFIX
 import com.attafitamim.room.compound.processor.generator.syntax.DAO_PREFIX
+import com.attafitamim.room.compound.processor.generator.syntax.DELETE_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.DELETE_ENTITIES_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.DELETE_METHOD_NAME
 import com.attafitamim.room.compound.processor.generator.syntax.INSERT_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.INSERT_ENTITIES_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.UPSERT_ANNOTATION
+import com.attafitamim.room.compound.processor.generator.syntax.UPSERT_ENTITIES_METHOD_NAME
 import com.attafitamim.room.compound.processor.generator.syntax.INSERT_METHOD_NAME
+import com.attafitamim.room.compound.processor.generator.syntax.UPSERT_METHOD_NAME
 import com.attafitamim.room.compound.processor.generator.syntax.INSTANCE_ACCESS_KEY
 import com.attafitamim.room.compound.processor.generator.syntax.LIST_ITEM_POSTFIX
 import com.attafitamim.room.compound.processor.generator.syntax.LIST_OF_METHOD
 import com.attafitamim.room.compound.processor.generator.syntax.NULLABLE_SIGN
+import com.attafitamim.room.compound.processor.generator.syntax.ON_CONFLICT_PARAMETER
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_CLOSE_PARENTHESIS
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_OPEN_PARENTHESIS
 import com.attafitamim.room.compound.processor.generator.syntax.PARAMETER_SEPARATOR
@@ -22,6 +31,7 @@ import com.attafitamim.room.compound.processor.generator.syntax.ROOM_PACKAGE
 import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_ANNOTATION
 import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_ENTITIES_METHOD_NAME
 import com.attafitamim.room.compound.processor.generator.syntax.UPDATE_METHOD_NAME
+import com.attafitamim.room.compound.processor.utils.createAssignSyntax
 import com.attafitamim.room.compound.processor.utils.createForEachSyntax
 import com.attafitamim.room.compound.processor.utils.createInitializationSyntax
 import com.attafitamim.room.compound.processor.utils.createListAdditionSyntax
@@ -73,15 +83,23 @@ class CompoundGenerator(
         val compoundListName = Collection::class.asClassName()
             .parameterizedBy(compoundClassName)
 
-        val insertOrUpdateFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+        val insertFunctionBuilder = FunSpec.builder(INSERT_METHOD_NAME)
+            .addParameter(compoundData.propertyInfo.name, compoundListName)
+
+        val upsertFunctionBuilder = FunSpec.builder(UPSERT_METHOD_NAME)
             .addParameter(compoundData.propertyInfo.name, compoundListName)
 
         val updateFunctionBuilder = FunSpec.builder(UPDATE_METHOD_NAME)
             .addParameter(compoundData.propertyInfo.name, compoundListName)
 
+        val deleteFunctionBuilder = FunSpec.builder(DELETE_METHOD_NAME)
+            .addParameter(compoundData.propertyInfo.name, compoundListName)
+
         if (isSuspendDao) {
-            insertOrUpdateFunctionBuilder.addModifiers(KModifier.SUSPEND)
+            insertFunctionBuilder.addModifiers(KModifier.SUSPEND)
+            upsertFunctionBuilder.addModifiers(KModifier.SUSPEND)
             updateFunctionBuilder.addModifiers(KModifier.SUSPEND)
+            deleteFunctionBuilder.addModifiers(KModifier.SUSPEND)
         }
 
         val listInitializationBlock = createListInitializationBlock(compoundData)
@@ -92,35 +110,76 @@ class CompoundGenerator(
             INSERT_ENTITIES_METHOD_NAME
         )
 
+        val upsertListBlock = createListActionBlock(
+            compoundData,
+            UPSERT_ENTITIES_METHOD_NAME
+        )
+
         val updateListBlock = createListActionBlock(
             compoundData,
             UPDATE_ENTITIES_METHOD_NAME
         )
 
+        val deleteListBlock = createListActionBlock(
+            compoundData,
+            DELETE_ENTITIES_METHOD_NAME
+        )
+
+        val insertAnnotation = createInsertAnnotationSpec()
         val insertEntityFunctionBuilder = createEntityActionFunction(
             compoundData,
             INSERT_ENTITIES_METHOD_NAME,
-            INSERT_ANNOTATION
+            insertAnnotation
         )
 
+        val upsertAnnotationClassName = ClassName(ROOM_PACKAGE, UPSERT_ANNOTATION)
+        val upsertAnnotation = AnnotationSpec.builder(upsertAnnotationClassName).build()
+        val upsertEntityFunctionBuilder = createEntityActionFunction(
+            compoundData,
+            UPSERT_ENTITIES_METHOD_NAME,
+            upsertAnnotation
+        )
+
+        val updateAnnotationClassName = ClassName(ROOM_PACKAGE, UPDATE_ANNOTATION)
+        val updateAnnotation = AnnotationSpec.builder(updateAnnotationClassName).build()
         val updateEntityFunctionBuilder = createEntityActionFunction(
             compoundData,
             UPDATE_ENTITIES_METHOD_NAME,
-            UPDATE_ANNOTATION
+            updateAnnotation
         )
 
-        insertOrUpdateFunctionBuilder
+        val deleteAnnotationClassName = ClassName(ROOM_PACKAGE, DELETE_ANNOTATION)
+        val deleteAnnotation = AnnotationSpec.builder(deleteAnnotationClassName).build()
+        val deleteEntityFunctionBuilder = createEntityActionFunction(
+            compoundData,
+            DELETE_ENTITIES_METHOD_NAME,
+            deleteAnnotation
+        )
+
+        insertFunctionBuilder
             .addCode(listInitializationBlock)
             .addCode(listMappingBlock)
             .addCode(insertListBlock)
+
+        upsertFunctionBuilder
+            .addCode(listInitializationBlock)
+            .addCode(listMappingBlock)
+            .addCode(upsertListBlock)
 
         updateFunctionBuilder
             .addCode(listInitializationBlock)
             .addCode(listMappingBlock)
             .addCode(updateListBlock)
 
-        val listInsertFunction = insertOrUpdateFunctionBuilder.build()
+        deleteFunctionBuilder
+            .addCode(listInitializationBlock)
+            .addCode(listMappingBlock)
+            .addCode(deleteListBlock)
+
+        val listInsertFunction = insertFunctionBuilder.build()
+        val listUpsertFunction = upsertFunctionBuilder.build()
         val listUpdateFunction = updateFunctionBuilder.build()
+        val listDeleteFunction = deleteFunctionBuilder.build()
 
         val singleInsertFunction = createSingleActionFunction(
             compoundClassName,
@@ -130,12 +189,28 @@ class CompoundGenerator(
             INSERT_METHOD_NAME
         )
 
+        val singleUpsertFunction = createSingleActionFunction(
+            compoundClassName,
+            compoundData.propertyInfo.name,
+            listUpsertFunction,
+            isSuspendDao,
+            UPSERT_METHOD_NAME
+        )
+
         val singleUpdateFunction = createSingleActionFunction(
             compoundClassName,
             compoundData.propertyInfo.name,
             listUpdateFunction,
             isSuspendDao,
             UPDATE_METHOD_NAME
+        )
+
+        val singleDeleteFunction = createSingleActionFunction(
+            compoundClassName,
+            compoundData.propertyInfo.name,
+            listDeleteFunction,
+            isSuspendDao,
+            DELETE_METHOD_NAME
         )
 
         val daoAnnotation = ClassName(
@@ -148,9 +223,15 @@ class CompoundGenerator(
             .addFunction(singleInsertFunction)
             .addFunction(listInsertFunction)
             .addFunction(insertEntityFunctionBuilder)
+            .addFunction(singleUpsertFunction)
+            .addFunction(listUpsertFunction)
+            .addFunction(upsertEntityFunctionBuilder)
             .addFunction(singleUpdateFunction)
             .addFunction(listUpdateFunction)
             .addFunction(updateEntityFunctionBuilder)
+            .addFunction(singleDeleteFunction)
+            .addFunction(listDeleteFunction)
+            .addFunction(deleteEntityFunctionBuilder)
             .build()
 
         val fileSpec = FileSpec.builder(compoundData.typeInfo.packageName, fileName)
@@ -169,14 +250,8 @@ class CompoundGenerator(
     private fun createEntityActionFunction(
         compoundData: EntityData.MainCompound,
         actionName: String,
-        actionAnnotationName: String
+        actionAnnotation: AnnotationSpec
     ): FunSpec {
-        val actionAnnotationClassName = ClassName(
-            ROOM_PACKAGE,
-            actionAnnotationName
-        )
-
-        val actionAnnotation = AnnotationSpec.builder(actionAnnotationClassName).build()
 
         val functionBuilder = FunSpec.builder(actionName)
             .addModifiers(KModifier.ABSTRACT)
@@ -666,5 +741,25 @@ class CompoundGenerator(
         append(junction.junctionParentColumn, " = ", embeddedParentAccessSyntax.chain, ",\n")
         append(junction.junctionEntityColumn, " = ", embeddedEntityAccessSyntax.chain, "\n)")
         append("\n)")
+    }
+
+    private fun createInsertAnnotationSpec(): AnnotationSpec {
+        val upsertAnnotationClassName = ClassName(
+            ROOM_PACKAGE,
+            INSERT_ANNOTATION
+        )
+
+        val conflictStrategyReplaceName = ClassName(
+            ROOM_PACKAGE,
+            listOf(
+                CONFLICT_STRATEGY,
+                CONFLICT_STRATEGY_REPLACE
+            )
+        )
+
+        val onConflictAssignment = createAssignSyntax(ON_CONFLICT_PARAMETER)
+        return AnnotationSpec.builder(upsertAnnotationClassName)
+            .addMember(onConflictAssignment, conflictStrategyReplaceName)
+            .build()
     }
 }
